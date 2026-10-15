@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import glob
+import threading
 
 import cv2
 
@@ -21,7 +22,18 @@ if CARPETA_PROYECTO not in sys.path:
     sys.path.insert(0, CARPETA_PROYECTO)
 
 # Funcion de deteccion original del grupo VIDEO (modelo best.pt)
-from modulos.deteccion import detectar_objetos  # noqa: E402
+from modulos.deteccion import detectar_objetos as _detectar_video  # noqa: E402
+
+
+# La camara de VIDEO y el procesamiento de IMAGEN pueden usar el modelo
+# al mismo tiempo (hilos distintos): se usa de a uno.
+_candado_modelo = threading.Lock()
+
+
+def detectar_objetos(frame):
+
+    with _candado_modelo:
+        return _detectar_video(frame)
 
 
 EXTENSIONES_IMAGEN = (".jpg", ".jpeg", ".png", ".webp", ".bmp")

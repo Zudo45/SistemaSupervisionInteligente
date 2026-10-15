@@ -24,6 +24,7 @@ from modulo_imagen.segmentacion import aislar_objeto
 from modulo_imagen.mejoramiento import ampliar
 from modulo_imagen import vigilante
 from modulo_imagen.verificacion import emparejar
+from modulo_video.sesion_camara import SesionCamara, TIEMPO_ALERTA, es_no_permitido
 from modulo_imagen.visualizacion import (
     dibujar_video,
     superponer_mascara,
@@ -33,7 +34,7 @@ from modulo_imagen.visualizacion import (
 
 
 st.set_page_config(
-    page_title="Modulo IMAGEN",
+    page_title="Supervision de Examenes",
     page_icon="🖼️",
     layout="wide"
 )
@@ -423,17 +424,27 @@ def mostrar_analisis(resultado, clave):
 
 with st.sidebar:
 
-    st.markdown("### 🖼️ Modulo IMAGEN")
-    st.caption("Sistema de Supervision de Examenes")
+    st.markdown("### 🎓 Supervision de Examenes")
+    st.caption("Modulos VIDEO e IMAGEN")
 
-    st.divider()
-    st.markdown("**Segmentacion**")
-    segmentacion = st.selectbox(
-        "Metodo de segmentacion",
-        ["grabcut", "otsu"],
-        format_func={"grabcut": "GrabCut (modelos de color)", "otsu": "Otsu (umbral automatico)"}.get,
-        label_visibility="collapsed"
+    modulo = st.radio(
+        "Modulo",
+        ["VIDEO", "IMAGEN"],
+        format_func={"VIDEO": "📹 VIDEO", "IMAGEN": "🖼️ IMAGEN"}.get,
+        captions=["Camara, deteccion y alarma", "Procesamiento de las alertas"]
     )
+
+    segmentacion = "grabcut"
+
+    if modulo == "IMAGEN":
+        st.divider()
+        st.markdown("**Segmentacion**")
+        segmentacion = st.selectbox(
+            "Metodo de segmentacion",
+            ["grabcut", "otsu"],
+            format_func={"grabcut": "GrabCut (modelos de color)", "otsu": "Otsu (umbral automatico)"}.get,
+            label_visibility="collapsed"
+        )
 
     st.divider()
     st.markdown("**Acceso desde otra PC (misma red)**")
@@ -444,6 +455,152 @@ with st.sidebar:
 opciones = {"segmentacion": segmentacion}
 
 opciones_clave = tuple(sorted({**OPCIONES_POR_DEFECTO, **opciones}.items()))
+
+
+# ============================================================
+# MODULO VIDEO
+# ============================================================
+
+@st.cache_resource
+def obtener_sesion():
+    """
+    Sesion de camara compartida por todos los que abren la pagina.
+    """
+
+    return SesionCamara()
+
+
+def es_anfitrion():
+    """
+    Solo la laptop donde corre la pagina puede manejar la camara.
+    """
+
+    return st.context.ip_address in (None, "127.0.0.1", "::1")
+
+
+@st.fragment(run_every=0.25)
+def vista_camara():
+
+    sesion = obtener_sesion()
+
+    # Aviso cuando se dispara una alerta nueva
+    vistas = st.session_state.get("alertas_vistas", 0)
+
+    if len(sesion.alertas) > vistas:
+        if vistas or st.session_state.get("camara_vista"):
+            st.toast(f"🚨 Alerta: {sesion.alertas[0]['objeto']} · enviada a IMAGEN")
+        st.session_state["alertas_vistas"] = len(sesion.alertas)
+
+    st.session_state["camara_vista"] = True
+
+    c1, c2 = st.columns([3, 1.3])
+
+    with c1:
+
+        if sesion.fotograma_jpeg:
+            st.image(sesion.fotograma_jpeg, width="stretch")
+        elif sesion.activa:
+            st.markdown(
+                "<div class='vacio'>⏳ Iniciando camara…<br><small>"
+                + ("Cargando el modelo de VIDEO." if not sesion.modelo_listo.is_set()
+                   else "Abriendo la camara.")
+                + "</small></div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                "<div class='vacio'>📹 Camara apagada<br><small>"
+                + ("Pulsa <b>Iniciar camara</b> para empezar." if es_anfitrion()
+                   else "Esperando a que VIDEO inicie la camara.")
+                + "</small></div>",
+                unsafe_allow_html=True
+            )
+
+    with c2:
+
+        if sesion.error:
+            st.error(sesion.error)
+
+        estado = "🟢 Activa" if sesion.activa else "⚪ Apagada"
+
+        if sesion.alerta_activa:
+            estado = "🔴 ALERTA"
+
+        st.metric("Camara", estado)
+        st.metric("Tiempo del objeto", f"{sesion.tiempo_mayor:.1f} s / {TIEMPO_ALERTA} s")
+        st.progress(min(sesion.tiempo_mayor / TIEMPO_ALERTA, 1.0))
+        st.metric("Alertas en esta sesion", len(sesion.alertas))
+
+        if sesion.activa:
+            st.caption(f"{sesion.fps:.1f} fotogramas por segundo")
+
+        if sesion.detecciones:
+            st.markdown(" ".join(
+                pastilla(f"{d['clase']} {d['confianza']:.2f}",
+                         "alerta" if es_no_permitido(d["clase"]) else "info")
+                for d in sesion.detecciones
+            ), unsafe_allow_html=True)
+
+    # Alertas de la sesion y su estado en IMAGEN
+    if sesion.alertas:
+
+        pendientes = set(vigilante.pendientes())
+
+        st.markdown("**Alertas enviadas a IMAGEN**")
+        st.dataframe(pd.DataFrame([
+            {
+                "hora": a["hora"],
+                "objeto": a["objeto"],
+                "archivo": a["archivo"],
+                "IMAGEN": "⏳ procesando" if a["archivo"] in pendientes else "✅ procesada"
+            }
+            for a in sesion.alertas
+        ]), hide_index=True)
+
+    with st.expander("Registro de eventos"):
+        st.code("\n".join(sesion.registro) or "Sin eventos", language=None)
+
+
+def mostrar_modulo_video():
+
+    st.markdown(f"""
+    <div class="encabezado">
+      <h1>Modulo VIDEO</h1>
+      <p>Sistema del grupo VIDEO: camara, deteccion con su modelo YOLO y alarma.
+         Cuando un objeto no permitido se mantiene {TIEMPO_ALERTA} segundos, se guarda
+         la captura y se envia automaticamente al modulo IMAGEN.</p>
+      <div class="flujo">
+        <span>Camara</span><span>Deteccion (best.pt)</span>
+        <span>Contador {TIEMPO_ALERTA} s</span><span>Alarma</span>
+        <span>Evento → IMAGEN</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    sesion = obtener_sesion()
+
+    if es_anfitrion():
+
+        b1, b2, _ = st.columns([1, 1, 3])
+
+        if b1.button("▶ Iniciar camara", type="primary", width="stretch",
+                     disabled=sesion.activa):
+            sesion.iniciar()
+            st.rerun()
+
+        if b2.button("■ Detener camara", width="stretch", disabled=not sesion.activa):
+            sesion.detener()
+            st.rerun()
+
+    else:
+        st.caption("La camara la maneja la laptop donde corre la pagina. Aqui solo se observa.")
+
+    vista_camara()
+
+
+if modulo == "VIDEO":
+    mostrar_modulo_video()
+    st.stop()
 
 
 # ============================================================
@@ -483,7 +640,7 @@ def panel_alertas():
 
     if pendientes:
         with st.spinner(f"Procesando alerta nueva: {pendientes[0]}"):
-            vigilante.revisar(maximo=1)
+            vigilante.revisar(maximo=1, bloquear=False)
 
     lista = list(reversed(vigilante.procesadas()))   # mas antigua primero
     total = len(lista)

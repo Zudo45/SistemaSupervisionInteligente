@@ -9,6 +9,7 @@ import os
 import re
 import json
 import time
+import threading
 import unicodedata
 from datetime import datetime
 
@@ -28,6 +29,9 @@ PATRON_ALERTA = re.compile(
     r"alerta_(?P<objeto>.+)_(?P<fecha>\d{4}-\d{2}-\d{2})_(?P<hora>\d{2}-\d{2}-\d{2})",
     re.IGNORECASE
 )
+
+# Evita que dos hilos (camara de VIDEO y pagina) procesen a la vez
+_candado = threading.Lock()
 
 CARPETA_IMAGENES = os.path.join(CARPETA_EN_VIVO, "imagenes")
 CARPETA_DATOS = os.path.join(CARPETA_EN_VIVO, "datos")
@@ -216,21 +220,30 @@ def procesar_alerta(nombre_archivo, opciones=None):
     return datos
 
 
-def revisar(opciones=None, maximo=None):
+def revisar(opciones=None, maximo=None, bloquear=True):
     """
     Procesa las alertas nuevas. Devuelve la lista de las procesadas.
+    Con bloquear=False no espera si otro hilo ya esta procesando.
     """
 
-    nuevas = []
+    if not _candado.acquire(blocking=bloquear):
+        return []
 
-    for nombre in pendientes()[:maximo]:
+    try:
 
-        datos = procesar_alerta(nombre, opciones)
+        nuevas = []
 
-        if datos:
-            nuevas.append(datos)
+        for nombre in pendientes()[:maximo]:
 
-    return nuevas
+            datos = procesar_alerta(nombre, opciones)
+
+            if datos:
+                nuevas.append(datos)
+
+        return nuevas
+
+    finally:
+        _candado.release()
 
 
 def exportar_acumulado():
