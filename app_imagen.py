@@ -426,16 +426,24 @@ def mostrar_analisis(resultado, clave):
 # BARRA LATERAL
 # ============================================================
 
-RUTA_LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+CARPETA_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+# Se acepta el logo en PNG o JPG
+RUTA_LOGO = next(
+    (os.path.join(CARPETA_ASSETS, n) for n in ("logo.png", "logo.jpg", "logo.jpeg")
+     if os.path.exists(os.path.join(CARPETA_ASSETS, n))),
+    None
+)
 
 with st.sidebar:
 
-    if os.path.exists(RUTA_LOGO):
+    if RUTA_LOGO:
         with open(RUTA_LOGO, "rb") as f:
             logo = base64.b64encode(f.read()).decode()
+        tipo = "png" if RUTA_LOGO.endswith(".png") else "jpeg"
         st.markdown(
             "<div style='text-align:center;margin-bottom:.6rem'>"
-            "<img src='data:image/png;base64," + logo + "' style='width:120px;"
+            f"<img src='data:image/{tipo};base64," + logo + "' style='width:120px;"
             "background:#fff;border-radius:50%;padding:10px'></div>",
             unsafe_allow_html=True
         )
