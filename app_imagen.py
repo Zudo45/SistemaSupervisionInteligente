@@ -6,6 +6,7 @@
 
 import os
 import json
+import base64
 import socket
 
 import pandas as pd
@@ -478,7 +479,7 @@ def es_anfitrion():
     return st.context.ip_address in (None, "127.0.0.1", "::1")
 
 
-@st.fragment(run_every=0.25)
+@st.fragment(run_every=0.3)
 def vista_camara():
 
     sesion = obtener_sesion()
@@ -498,7 +499,13 @@ def vista_camara():
     with c1:
 
         if sesion.fotograma_jpeg:
-            st.image(sesion.fotograma_jpeg, width="stretch")
+            # Se incrusta como base64: con st.image el navegador pedia
+            # fotogramas que la pagina ya habia reemplazado
+            st.markdown(
+                "<img style='width:100%;border-radius:12px' src='data:image/jpeg;base64,"
+                + base64.b64encode(sesion.fotograma_jpeg).decode() + "'>",
+                unsafe_allow_html=True
+            )
         elif sesion.activa:
             st.markdown(
                 "<div class='vacio'>⏳ Iniciando camara…<br><small>"
@@ -521,7 +528,14 @@ def vista_camara():
         if sesion.error:
             st.error(sesion.error)
 
-        estado = "🟢 Activa" if sesion.activa else "⚪ Apagada"
+        if not sesion.activa:
+            estado = "⚪ Apagada"
+        elif not sesion.modelo_listo.is_set():
+            estado = "⏳ Cargando modelo"
+        elif not sesion.fotograma_jpeg:
+            estado = "⏳ Abriendo camara"
+        else:
+            estado = "🟢 Activa"
 
         if sesion.alerta_activa:
             estado = "🔴 ALERTA"

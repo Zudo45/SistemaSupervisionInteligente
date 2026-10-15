@@ -34,6 +34,21 @@ from modulos.registro import guardar_alerta
 from principal import es_no_permitido, normalizar
 
 
+def abrir_camara(indice):
+    """
+    En Windows, DirectShow abre la camara en menos de un segundo
+    (el metodo por defecto tarda varios). Si falla, se usa el normal.
+    """
+
+    if os.name == "nt":
+        camara = cv2.VideoCapture(indice, cv2.CAP_DSHOW)
+        if camara.isOpened():
+            return camara
+        camara.release()
+
+    return cv2.VideoCapture(indice)
+
+
 class SesionCamara:
     """
     Una sola sesion por pagina: todos los que abren la pagina ven la
@@ -76,6 +91,9 @@ class SesionCamara:
         if self.activa:
             return
 
+        if self._hilo and self._hilo.is_alive():
+            self._hilo.join(timeout=3)
+
         # Se marca activa de inmediato (abrir la camara tarda unos segundos)
         self.activa = True
         self.error = None
@@ -84,13 +102,13 @@ class SesionCamara:
         self._hilo.start()
 
     def detener(self):
+        """
+        No espera a que la camara se cierre: el hilo termina por su cuenta.
+        """
 
         self._detener.set()
-
-        if self._hilo:
-            self._hilo.join(timeout=5)
-
         self.activa = False
+        self.fotograma_jpeg = None
 
     def _precalentar(self):
 
@@ -110,7 +128,10 @@ class SesionCamara:
 
         self.modelo_listo.wait()
 
-        camara = cv2.VideoCapture(CAMARA)
+        if self._detener.is_set():
+            return
+
+        camara = abrir_camara(CAMARA)
 
         if not camara.isOpened():
             self.error = "No se pudo abrir la camara (puede estar en uso por otro programa)."
@@ -198,8 +219,11 @@ class SesionCamara:
         finally:
 
             camara.release()
-            self.activa = False
-            self.fotograma_jpeg = None
+
+            # Solo si sigue siendo la sesion vigente (no una nueva)
+            if self._hilo is threading.current_thread():
+                self.activa = False
+                self.fotograma_jpeg = None
             self.tiempo_mayor = 0.0
             self.alerta_activa = False
             self._anotar("Camara detenida")
