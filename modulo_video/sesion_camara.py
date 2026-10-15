@@ -50,6 +50,32 @@ def abrir_camara(indice):
     return cv2.VideoCapture(indice)
 
 
+# Texto que se muestra en la esquina del video
+NOMBRE_AULA = "Aula 301"
+
+
+def rotular(vista):
+    """
+    Barra inferior con la fecha/hora y el aula, como en una camara de
+    vigilancia.
+    """
+
+    alto, ancho = vista.shape[:2]
+
+    franja = vista[alto - 40:alto].copy()
+    cv2.rectangle(franja, (0, 0), (ancho, 40), (0, 0, 0), cv2.FILLED)
+    vista[alto - 40:alto] = cv2.addWeighted(franja, 0.55, vista[alto - 40:alto], 0.45, 0)
+
+    cv2.putText(vista, datetime.now().strftime("%d/%m/%Y %H:%M:%S"), (12, alto - 13),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+    (w, _), _ = cv2.getTextSize(NOMBRE_AULA, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+    cv2.putText(vista, NOMBRE_AULA, (ancho - w - 12, alto - 13),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+    return vista
+
+
 class SesionCamara:
     """
     Una sola sesion por pagina: todos los que abren la pagina ven la
@@ -210,7 +236,7 @@ class SesionCamara:
                     cv2.putText(vista, "ALERTA: MATERIAL NO PERMITIDO", (20, 85),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
 
-                vista = dibujar_detecciones(vista, detecciones)
+                vista = rotular(dibujar_detecciones(vista, detecciones))
 
                 correcto, jpeg = cv2.imencode(".jpg", vista, [cv2.IMWRITE_JPEG_QUALITY, 80])
 

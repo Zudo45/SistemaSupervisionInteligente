@@ -6,7 +6,11 @@
 
 import os
 import json
+import base64
 import socket
+from datetime import datetime
+
+import cv2
 
 import pandas as pd
 import streamlit as st
@@ -422,16 +426,28 @@ def mostrar_analisis(resultado, clave):
 # BARRA LATERAL
 # ============================================================
 
+RUTA_LOGO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo.png")
+
 with st.sidebar:
 
-    st.markdown("### 🎓 Supervision de Examenes")
-    st.caption("Modulos VIDEO e IMAGEN")
+    if os.path.exists(RUTA_LOGO):
+        with open(RUTA_LOGO, "rb") as f:
+            logo = base64.b64encode(f.read()).decode()
+        st.markdown(
+            "<div style='text-align:center;margin-bottom:.6rem'>"
+            "<img src='data:image/png;base64," + logo + "' style='width:120px;"
+            "background:#fff;border-radius:50%;padding:10px'></div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("### Sistema de Supervisión Inteligente")
+    st.caption("Aula Inteligente para Educación Universitaria")
 
     modulo = st.radio(
-        "Modulo",
+        "Módulo",
         ["VIDEO", "IMAGEN"],
-        format_func={"VIDEO": "📹 VIDEO", "IMAGEN": "🖼️ IMAGEN"}.get,
-        captions=["Camara, deteccion y alarma", "Procesamiento de las alertas"]
+        format_func={"VIDEO": ":material/videocam: Video", "IMAGEN": ":material/image: Imágenes"}.get,
+        label_visibility="collapsed"
     )
 
     segmentacion = "grabcut"
@@ -478,49 +494,103 @@ def es_anfitrion():
     return st.context.ip_address in (None, "127.0.0.1", "::1")
 
 
+NOMBRES_OBJETO = {
+    "telefono": "Teléfono",
+    "laptop": "Laptop",
+    "cuaderno": "Cuaderno/Libro",
+    "libro": "Cuaderno/Libro",
+    "mochila": "Mochila",
+    "audifonos": "Audífonos",
+    "reloj": "Reloj",
+    "persona": "Persona",
+    "desconocido": "Desconocido"
+}
+
+ICONOS_OBJETO = {
+    "Teléfono": ":material/smartphone:",
+    "Laptop": ":material/laptop_windows:",
+    "Cuaderno/Libro": ":material/menu_book:",
+    "Mochila": ":material/backpack:",
+    "Audífonos": ":material/headphones:",
+    "Reloj": ":material/watch:",
+    "Persona": ":material/person:"
+}
+
+
+def nombre_objeto(clase):
+
+    return NOMBRES_OBJETO.get(clase, str(clase).capitalize())
+
+
+def lista_de_alertas():
+    """
+    Todas las capturas de la alarma guardadas en alertas/, de la mas
+    reciente a la mas antigua.
+    """
+
+    filas = []
+
+    for archivo in vigilante.alertas_en_carpeta():
+
+        ruta = os.path.join(CARPETA_ALERTAS_VIDEO, archivo)
+        datos = vigilante.leer_alerta(archivo)
+
+        if datos["fecha"]:
+            fecha, hora = datos["fecha"].split(" ")
+            fecha = "/".join(reversed(fecha.split("-")))
+        else:
+            modificado = datetime.fromtimestamp(os.path.getmtime(ruta))
+            fecha, hora = modificado.strftime("%d/%m/%Y"), modificado.strftime("%H:%M:%S")
+
+        objeto = nombre_objeto(datos["objeto"])
+
+        filas.append({
+            "archivo": archivo,
+            "ruta": ruta,
+            "modificado": os.path.getmtime(ruta),
+            "objeto": objeto,
+            "nombre": f"Uso de {objeto.lower()} detectado",
+            "fecha": fecha,
+            "hora": hora,
+            "extension": os.path.splitext(archivo)[1].lstrip(".").upper()
+        })
+
+    return sorted(filas, key=lambda f: f["modificado"], reverse=True)
+
+
+@st.cache_data(show_spinner=False, max_entries=200)
+def miniatura(ruta, modificado):
+
+    imagen = cv2.imread(ruta)
+
+    if imagen is None:
+        return None
+
+    imagen = cv2.resize(imagen, (96, int(96 * imagen.shape[0] / imagen.shape[1])))
+
+    return "data:image/jpeg;base64," + base64.b64encode(
+        cv2.imencode(".jpg", imagen)[1].tobytes()
+    ).decode()
+
+
 @st.fragment(run_every=1.0)
-def estado_camara():
+def estado_en_vivo():
 
     sesion = obtener_sesion()
 
-    # Aviso cuando se dispara una alerta nueva
-    vistas = st.session_state.get("alertas_vistas", 0)
-
-    if len(sesion.alertas) > vistas:
-        if vistas or st.session_state.get("camara_vista"):
-            st.toast(f"🚨 Alerta: {sesion.alertas[0]['objeto']} · enviada a IMAGEN")
-        st.session_state["alertas_vistas"] = len(sesion.alertas)
-
-    st.session_state["camara_vista"] = True
-
-    if sesion.error:
-        st.error(sesion.error)
-
     if not sesion.activa:
-        estado = "⚪ Apagada"
+        texto = "⚪ Apagada"
     elif not sesion.modelo_listo.is_set():
-        estado = "⏳ Cargando modelo"
+        texto = "⏳ Cargando modelo"
     elif not sesion.fotograma_jpeg:
-        estado = "⏳ Abriendo camara"
+        texto = "⏳ Abriendo cámara"
     elif sesion.alerta_activa:
-        estado = "🔴 ALERTA"
+        texto = "🔴 Alerta"
     else:
-        estado = "🟢 Activa"
+        texto = "🟢 En vivo"
 
-    st.metric("Camara", estado)
-    st.metric("Tiempo del objeto", f"{sesion.tiempo_mayor:.1f} s / {TIEMPO_ALERTA} s")
-    st.progress(min(sesion.tiempo_mayor / TIEMPO_ALERTA, 1.0))
-    st.metric("Alertas en esta sesion", len(sesion.alertas))
-
-    if sesion.activa and sesion.fotograma_jpeg:
-        st.caption(f"{sesion.fps:.1f} fotogramas por segundo")
-
-        if sesion.detecciones:
-            st.markdown(" ".join(
-                pastilla(f"{d['clase']} {d['confianza']:.2f}",
-                         "alerta" if es_no_permitido(d["clase"]) else "info")
-                for d in sesion.detecciones
-            ), unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:right;font-weight:600'>{texto}</div>",
+                unsafe_allow_html=True)
 
     # Si la camara cambia de estado por su cuenta, se actualizan los botones
     if st.session_state.get("camara_activa") != sesion.activa:
@@ -528,85 +598,221 @@ def estado_camara():
         st.rerun()
 
 
-@st.fragment(run_every=2.0)
-def alertas_de_la_sesion():
+@st.fragment(run_every=1.0)
+def contador_alarma():
 
     sesion = obtener_sesion()
 
-    if sesion.alertas:
+    if sesion.error:
+        st.error(sesion.error)
 
-        pendientes = set(vigilante.pendientes())
+    st.progress(
+        min(sesion.tiempo_mayor / TIEMPO_ALERTA, 1.0),
+        text=f"Objeto no permitido a la vista: {sesion.tiempo_mayor:.1f} s de {TIEMPO_ALERTA} s"
+    )
 
-        st.markdown("**Alertas enviadas a IMAGEN**")
-        st.dataframe(pd.DataFrame([
-            {
-                "hora": a["hora"],
-                "objeto": a["objeto"],
-                "archivo": a["archivo"],
-                "IMAGEN": "⏳ procesando" if a["archivo"] in pendientes else "✅ procesada"
-            }
-            for a in sesion.alertas
-        ]), hide_index=True)
 
-    with st.expander("Registro de eventos"):
-        st.code("\n".join(sesion.registro) or "Sin eventos", language=None)
+@st.fragment(run_every=1.0)
+def detecciones_actuales():
+
+    sesion = obtener_sesion()
+
+    conteo = {nombre: 0 for nombre in ICONOS_OBJETO}
+
+    if sesion.activa:
+        for d in sesion.detecciones:
+            nombre = nombre_objeto(d["clase"])
+            if nombre in conteo:
+                conteo[nombre] += 1
+
+    for nombre, icono in ICONOS_OBJETO.items():
+
+        cantidad = conteo[nombre]
+        alerta = cantidad and nombre != "Persona" and nombre != "Mochila" and nombre != "Laptop"
+
+        c1, c2 = st.columns([4, 1], vertical_alignment="center")
+        c1.markdown(f"{icono}&nbsp;&nbsp;{nombre}")
+        c2.markdown(pastilla(str(cantidad), "alerta" if alerta else "info"), unsafe_allow_html=True)
+
+
+@st.fragment(run_every=1.0)
+def detalle_del_evento():
+
+    sesion = obtener_sesion()
+    alertas = lista_de_alertas()
+
+    # Aviso y seleccion automatica cuando llega una alerta nueva
+    if alertas:
+        ultima = alertas[0]["archivo"]
+        if st.session_state.get("ultima_alerta") != ultima:
+            if st.session_state.get("ultima_alerta"):
+                st.toast(f"🚨 {alertas[0]['nombre']} · enviada a IMAGEN")
+            st.session_state["ultima_alerta"] = ultima
+            st.session_state["alerta_sel"] = ultima
+
+    if not alertas:
+        st.info("Aún no hay alertas. Aparecerán aquí cuando suene la alarma de VIDEO.")
+        return
+
+    elegida = next(
+        (a for a in alertas if a["archivo"] == st.session_state.get("alerta_sel")),
+        alertas[0]
+    )
+
+    st.error(elegida["nombre"], icon=":material/error:")
+
+    c1, c2 = st.columns([1.1, 1])
+
+    with c1:
+        st.image(elegida["ruta"], width="stretch")
+
+    with c2:
+        for icono, etiqueta, valor in (
+            (":material/alarm:", "Nombre de alerta", elegida["nombre"]),
+            (ICONOS_OBJETO.get(elegida["objeto"], ":material/help:"), "Objeto identificado", elegida["objeto"]),
+            (":material/calendar_month:", "Fecha", elegida["fecha"]),
+            (":material/schedule:", "Hora", elegida["hora"]),
+            (":material/image:", "Extensión", elegida["extension"])
+        ):
+            # Los ":" del valor (por ejemplo la hora) se escapan para que
+            # no se interpreten como codigos de iconos
+            valor = str(valor).replace(":", "&#58;")
+            st.markdown(f"{icono} <small>{etiqueta}</small><br><b>{valor}</b>", unsafe_allow_html=True)
+
+    procesada = elegida["archivo"] not in vigilante.pendientes()
+    st.caption("✅ Procesada por IMAGEN" if procesada else "⏳ IMAGEN está procesando esta captura")
+
+    with open(elegida["ruta"], "rb") as f:
+        st.download_button(
+            "Descargar imagen", f.read(), file_name=elegida["archivo"],
+            icon=":material/download:", type="primary", width="stretch",
+            key=f"descargar_{elegida['archivo']}"
+        )
+
+
+@st.fragment(run_every=2.0)
+def lista_de_capturas():
+
+    alertas = lista_de_alertas()
+
+    t1, t2, t3 = st.columns([3, 1.2, 1.2], vertical_alignment="bottom")
+
+    t1.markdown("##### :material/photo_library: Lista de capturas y alertas")
+
+    fecha = t2.date_input("Fecha", value=None, format="DD/MM/YYYY",
+                          label_visibility="collapsed", key="filtro_fecha")
+
+    tipos = ["Todo tipo"] + sorted({a["objeto"] for a in alertas})
+    tipo = t3.selectbox("Tipo", tipos, label_visibility="collapsed", key="filtro_tipo")
+
+    if fecha:
+        alertas = [a for a in alertas if a["fecha"] == fecha.strftime("%d/%m/%Y")]
+
+    if tipo != "Todo tipo":
+        alertas = [a for a in alertas if a["objeto"] == tipo]
+
+    if not alertas:
+        st.caption("No hay capturas para mostrar.")
+        return
+
+    tabla = pd.DataFrame([
+        {
+            "#": i + 1,
+            "Captura": miniatura(a["ruta"], a["modificado"]),
+            "Nombre de alerta": a["nombre"],
+            "Objeto identificado": a["objeto"],
+            "Fecha": a["fecha"],
+            "Hora": a["hora"],
+            "Extensión": a["extension"]
+        }
+        for i, a in enumerate(alertas)
+    ])
+
+    evento = st.dataframe(
+        tabla,
+        hide_index=True,
+        width="stretch",
+        row_height=48,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="tabla_capturas",
+        column_config={
+            "#": st.column_config.NumberColumn(width="small"),
+            "Captura": st.column_config.ImageColumn(width="small")
+        }
+    )
+
+    filas = evento.selection.rows
+
+    if filas and st.session_state.get("alerta_sel") != alertas[filas[0]]["archivo"]:
+        st.session_state["alerta_sel"] = alertas[filas[0]]["archivo"]
+        st.rerun()
 
 
 def mostrar_modulo_video():
 
-    st.markdown(f"""
-    <div class="encabezado">
-      <h1>Modulo VIDEO</h1>
-      <p>Sistema del grupo VIDEO: camara, deteccion con su modelo YOLO y alarma.
-         Cuando un objeto no permitido se mantiene {TIEMPO_ALERTA} segundos, se guarda
-         la captura y se envia automaticamente al modulo IMAGEN.</p>
-      <div class="flujo">
-        <span>Camara</span><span>Deteccion (best.pt)</span>
-        <span>Contador {TIEMPO_ALERTA} s</span><span>Alarma</span>
-        <span>Evento → IMAGEN</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    t1, t2 = st.columns([3, 2], vertical_alignment="bottom")
+
+    with t1:
+        st.markdown("# :material/videocam: Video")
+        st.caption("Gestión de capturas de imágenes y alertas detectadas durante los exámenes.")
 
     sesion = obtener_sesion()
     st.session_state["camara_activa"] = sesion.activa
 
-    if es_anfitrion():
+    with t2:
 
-        b1, b2, _ = st.columns([1, 1, 3])
+        if es_anfitrion():
 
-        if b1.button("▶ Iniciar camara", type="primary", width="stretch",
-                     disabled=sesion.activa):
-            sesion.iniciar()
-            st.rerun()
+            b1, b2 = st.columns(2)
 
-        if b2.button("■ Detener camara", width="stretch", disabled=not sesion.activa):
-            sesion.detener()
-            st.rerun()
+            if b1.button("Iniciar cámara", icon=":material/play_arrow:", type="primary",
+                         width="stretch", disabled=sesion.activa):
+                sesion.iniciar()
+                st.rerun()
 
-    else:
-        st.caption("La camara la maneja la laptop donde corre la pagina. Aqui solo se observa.")
+            if b2.button("Detener cámara", icon=":material/stop:", width="stretch",
+                         disabled=not sesion.activa):
+                sesion.detener()
+                st.rerun()
 
-    c1, c2 = st.columns([3, 1.3])
+        else:
+            st.caption("La cámara la maneja la laptop donde corre la página. Aquí solo se observa.")
 
-    with c1:
+    c1, c2, c3 = st.columns([1.55, 0.95, 1.55])
+
+    with c1, st.container(border=True):
+
+        h1, h2 = st.columns([2, 1], vertical_alignment="center")
+        h1.markdown("##### :material/videocam: Cámara en tiempo real")
+
+        with h2:
+            estado_en_vivo()
 
         if sesion.video.puerto:
-            # Flujo MJPEG servido por la laptop de la pagina, en el mismo
+            # Flujo MJPEG servido por la laptop de la pagina, con el mismo
             # nombre/IP con el que se abrio la pagina
             host = st.context.headers.get("Host", "localhost").split(":")[0]
             st.markdown(
-                f"<img style='width:100%;border-radius:12px;border:1px solid #1F2A40' "
+                f"<img style='width:100%;border-radius:10px' "
                 f"src='http://{host}:{sesion.video.puerto}/video.mjpg'>",
                 unsafe_allow_html=True
             )
         else:
-            st.error("No se pudo iniciar la transmision de video (puerto ocupado).")
+            st.error("No se pudo iniciar la transmisión de video (puerto ocupado).")
 
-    with c2:
-        estado_camara()
+        contador_alarma()
 
-    alertas_de_la_sesion()
+    with c2, st.container(border=True):
+        st.markdown("##### :material/format_list_bulleted: Detecciones actuales")
+        detecciones_actuales()
+
+    with c3, st.container(border=True):
+        st.markdown("##### :material/visibility: Detalle del evento")
+        detalle_del_evento()
+
+    with st.container(border=True):
+        lista_de_capturas()
 
 
 if modulo == "VIDEO":
