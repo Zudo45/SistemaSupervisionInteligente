@@ -3,6 +3,10 @@
 address = "0.0.0.0"
 port = 8501
 headless = true
+# Sin vigilar cambios en el codigo: revisar miles de archivos de las
+# librerias le quitaba CPU a la camara
+fileWatcherType = "none"
+runOnSave = false
 
 [browser]
 gatherUsageStats = false
@@ -17,3 +21,9 @@ backgroundColor = "#0B1220"
 secondaryBackgroundColor = "#131C2E"
 textColor = "#E2E8F0"
 font = "sans serif"
+
+[runner]
+# Streamlit hace una recoleccion de memoria completa despues de cada
+# actualizacion de la pagina. Con PyTorch cargado tarda mucho y frena
+# la camara y la transmision de video.
+postScriptGC = false

@@ -27,6 +27,7 @@ import numpy as np
 from modulo_imagen.config_imagen import CARPETA_PROYECTO  # agrega el proyecto al path
 from modulo_imagen.recepcion import detectar_objetos
 from modulo_imagen import vigilante
+from modulo_video.transmision import ServidorVideo
 
 from configuracion.config import CAMARA, TIEMPO_ALERTA
 from modulos.deteccion import dibujar_detecciones
@@ -77,6 +78,9 @@ class SesionCamara:
         # al cargar la pagina para que la camara arranque enseguida
         self.modelo_listo = threading.Event()
         threading.Thread(target=self._precalentar, daemon=True).start()
+
+        # Transmision de la camara al navegador (MJPEG)
+        self.video = ServidorVideo(self)
 
         # Eventos "alerta" hacia IMAGEN
         self._eventos = queue.Queue()

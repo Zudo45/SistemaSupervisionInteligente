@@ -6,7 +6,6 @@
 
 import os
 import json
-import base64
 import socket
 
 import pandas as pd
@@ -479,8 +478,8 @@ def es_anfitrion():
     return st.context.ip_address in (None, "127.0.0.1", "::1")
 
 
-@st.fragment(run_every=0.3)
-def vista_camara():
+@st.fragment(run_every=1.0)
+def estado_camara():
 
     sesion = obtener_sesion()
 
@@ -494,59 +493,27 @@ def vista_camara():
 
     st.session_state["camara_vista"] = True
 
-    c1, c2 = st.columns([3, 1.3])
+    if sesion.error:
+        st.error(sesion.error)
 
-    with c1:
+    if not sesion.activa:
+        estado = "⚪ Apagada"
+    elif not sesion.modelo_listo.is_set():
+        estado = "⏳ Cargando modelo"
+    elif not sesion.fotograma_jpeg:
+        estado = "⏳ Abriendo camara"
+    elif sesion.alerta_activa:
+        estado = "🔴 ALERTA"
+    else:
+        estado = "🟢 Activa"
 
-        if sesion.fotograma_jpeg:
-            # Se incrusta como base64: con st.image el navegador pedia
-            # fotogramas que la pagina ya habia reemplazado
-            st.markdown(
-                "<img style='width:100%;border-radius:12px' src='data:image/jpeg;base64,"
-                + base64.b64encode(sesion.fotograma_jpeg).decode() + "'>",
-                unsafe_allow_html=True
-            )
-        elif sesion.activa:
-            st.markdown(
-                "<div class='vacio'>⏳ Iniciando camara…<br><small>"
-                + ("Cargando el modelo de VIDEO." if not sesion.modelo_listo.is_set()
-                   else "Abriendo la camara.")
-                + "</small></div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                "<div class='vacio'>📹 Camara apagada<br><small>"
-                + ("Pulsa <b>Iniciar camara</b> para empezar." if es_anfitrion()
-                   else "Esperando a que VIDEO inicie la camara.")
-                + "</small></div>",
-                unsafe_allow_html=True
-            )
+    st.metric("Camara", estado)
+    st.metric("Tiempo del objeto", f"{sesion.tiempo_mayor:.1f} s / {TIEMPO_ALERTA} s")
+    st.progress(min(sesion.tiempo_mayor / TIEMPO_ALERTA, 1.0))
+    st.metric("Alertas en esta sesion", len(sesion.alertas))
 
-    with c2:
-
-        if sesion.error:
-            st.error(sesion.error)
-
-        if not sesion.activa:
-            estado = "⚪ Apagada"
-        elif not sesion.modelo_listo.is_set():
-            estado = "⏳ Cargando modelo"
-        elif not sesion.fotograma_jpeg:
-            estado = "⏳ Abriendo camara"
-        else:
-            estado = "🟢 Activa"
-
-        if sesion.alerta_activa:
-            estado = "🔴 ALERTA"
-
-        st.metric("Camara", estado)
-        st.metric("Tiempo del objeto", f"{sesion.tiempo_mayor:.1f} s / {TIEMPO_ALERTA} s")
-        st.progress(min(sesion.tiempo_mayor / TIEMPO_ALERTA, 1.0))
-        st.metric("Alertas en esta sesion", len(sesion.alertas))
-
-        if sesion.activa:
-            st.caption(f"{sesion.fps:.1f} fotogramas por segundo")
+    if sesion.activa and sesion.fotograma_jpeg:
+        st.caption(f"{sesion.fps:.1f} fotogramas por segundo")
 
         if sesion.detecciones:
             st.markdown(" ".join(
@@ -555,7 +522,17 @@ def vista_camara():
                 for d in sesion.detecciones
             ), unsafe_allow_html=True)
 
-    # Alertas de la sesion y su estado en IMAGEN
+    # Si la camara cambia de estado por su cuenta, se actualizan los botones
+    if st.session_state.get("camara_activa") != sesion.activa:
+        st.session_state["camara_activa"] = sesion.activa
+        st.rerun()
+
+
+@st.fragment(run_every=2.0)
+def alertas_de_la_sesion():
+
+    sesion = obtener_sesion()
+
     if sesion.alertas:
 
         pendientes = set(vigilante.pendientes())
@@ -592,6 +569,7 @@ def mostrar_modulo_video():
     """, unsafe_allow_html=True)
 
     sesion = obtener_sesion()
+    st.session_state["camara_activa"] = sesion.activa
 
     if es_anfitrion():
 
@@ -609,7 +587,26 @@ def mostrar_modulo_video():
     else:
         st.caption("La camara la maneja la laptop donde corre la pagina. Aqui solo se observa.")
 
-    vista_camara()
+    c1, c2 = st.columns([3, 1.3])
+
+    with c1:
+
+        if sesion.video.puerto:
+            # Flujo MJPEG servido por la laptop de la pagina, en el mismo
+            # nombre/IP con el que se abrio la pagina
+            host = st.context.headers.get("Host", "localhost").split(":")[0]
+            st.markdown(
+                f"<img style='width:100%;border-radius:12px;border:1px solid #1F2A40' "
+                f"src='http://{host}:{sesion.video.puerto}/video.mjpg'>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.error("No se pudo iniciar la transmision de video (puerto ocupado).")
+
+    with c2:
+        estado_camara()
+
+    alertas_de_la_sesion()
 
 
 if modulo == "VIDEO":
