@@ -1,20 +1,5 @@
-# Entornos Python
 __pycache__/
 *.pyc
-
-# Resultados de entrenamiento
-runs/
-
-# Datasets
-dataset/
-dataset_filtrado/
-
-# Modelos pesados
-modelo_ia/*.pt
-
-# Archivos generados por el sistema
-alertas/
-capturas/
-
-# Configuración local
 .vscode/
+runs/
+*.cache
