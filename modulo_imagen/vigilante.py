@@ -152,17 +152,24 @@ def procesadas():
 
 def cargar_paquete(nombre_archivo, frame_id=0):
 
-    frame = cv2.imread(os.path.join(CARPETA_ALERTAS_VIDEO, nombre_archivo))
+    ruta = os.path.join(CARPETA_ALERTAS_VIDEO, nombre_archivo)
+
+    frame = cv2.imread(ruta)
 
     if frame is None:
         return None
 
     alerta = leer_alerta(nombre_archivo)
 
+    # Si el nombre no trae la fecha (archivo renombrado), se usa la del archivo
+    fecha = alerta["fecha"] or datetime.fromtimestamp(
+        os.path.getmtime(ruta)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
     return {
         "frame_id": frame_id,
         "origen": nombre_archivo,
-        "timestamp": alerta["fecha"] or "",
+        "timestamp": fecha,
         "alerta": alerta,
         "frame": redimensionar(frame)
     }
@@ -193,8 +200,12 @@ def procesar_alerta(nombre_archivo, opciones=None):
 
     rutas = {
         "original": os.path.join(CARPETA_IMAGENES, f"{base}_video.jpg"),
-        "procesada": os.path.join(CARPETA_IMAGENES, f"{base}_imagen.jpg")
+        "procesada": os.path.join(CARPETA_IMAGENES, f"{base}_imagen.jpg"),
+        "mejorada": os.path.join(CARPETA_IMAGENES, f"{base}_mejorada.jpg")
     }
+
+    # Imagen mejorada limpia (sin recuadros): la que recibe PREDICCION
+    cv2.imwrite(rutas["mejorada"], imagenes["mejorado"], [cv2.IMWRITE_JPEG_QUALITY, 92])
 
     cv2.imwrite(rutas["original"], dibujar_video(
         imagenes["capturado"], resultado["registro_video"]["detecciones"]
@@ -216,6 +227,13 @@ def procesar_alerta(nombre_archivo, opciones=None):
         json.dump(datos, f, indent=2, ensure_ascii=False)
 
     exportar_acumulado()
+
+    # Evento hacia PREDICCION: imagen mejorada + datos de IMAGEN
+    try:
+        from modulo_prediccion.integracion import predecir_alerta
+        predecir_alerta(datos)
+    except Exception as error:  # noqa: BLE001
+        print(f"PREDICCION no pudo procesar {nombre_archivo}: {error}")
 
     return datos
 

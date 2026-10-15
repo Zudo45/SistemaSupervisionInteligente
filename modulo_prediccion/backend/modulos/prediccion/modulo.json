@@ -1,0 +1,16 @@
+{
+  "nombre": "prediccion",
+  "estado": "dos_motores_examen_y_seguimiento_sintetico_local",
+  "responsable": "equipo de prediccion",
+  "repositorio": "https://github.com/alessandrorr1007-debug/Prediccion_GD",
+  "artefactos": [
+    "backend/modulos/prediccion/engine.py",
+    "backend/modulos/prediccion/integracion.py",
+    "backend/modulos/prediccion/seguimiento.py",
+    "backend/modulos/prediccion/seguimiento_contrato.py",
+    "backend/modulos/prediccion/seguimiento_integracion.py",
+    "backend/modulos/prediccion/seguimiento_api.py"
+  ],
+  "funcion": "Supervisión de exámenes y seguimiento explicable por estudiante con identidad explícita; AUDIO pendiente",
+  "entrenamiento": "no aplica; integra resultados externos y usa reglas explicables"
+}

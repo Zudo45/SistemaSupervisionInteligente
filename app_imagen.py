@@ -22,13 +22,14 @@ from modulo_imagen.config_imagen import (
     LADO_MINIMO_REGION
 )
 from modulo_imagen.pipeline import procesar_frame, OPCIONES_POR_DEFECTO
-from modulo_imagen.exportacion import generar_json, filas_csv
+from modulo_imagen.exportacion import generar_json
 from modulo_imagen.evaluacion import evaluar, resumen_por_escenario
 from modulo_imagen.segmentacion import aislar_objeto
 from modulo_imagen.mejoramiento import ampliar
 from modulo_imagen import vigilante
 from modulo_imagen.verificacion import emparejar
 from modulo_video.sesion_camara import SesionCamara, TIEMPO_ALERTA, es_no_permitido
+from modulo_prediccion import integracion as integracion_prediccion
 from modulo_imagen.visualizacion import (
     dibujar_video,
     superponer_mascara,
@@ -396,28 +397,14 @@ def mostrar_analisis(resultado, clave):
     with pestanas[6]:
 
         datos = generar_json([resultado])
-        filas = filas_csv([resultado])
 
-        st.caption("Salida de IMAGEN para otros modulos del sistema (por ejemplo, PREDICCION).")
-
-        c1, c2, _ = st.columns([1, 1, 3])
-
-        c1.download_button(
-            "Descargar JSON",
-            json.dumps(datos, indent=2, ensure_ascii=False),
-            file_name="resultado_imagen.json",
-            mime="application/json",
-            key=f"json_{clave}"
+        st.caption(
+            "Al terminar el procesamiento, IMAGEN envía automáticamente a PREDICCIÓN "
+            "la imagen mejorada (sin recuadros) y estos datos."
         )
 
-        if filas:
-            c2.download_button(
-                "Descargar CSV",
-                pd.DataFrame(filas).to_csv(index=False).encode("utf-8-sig"),
-                file_name="resultado_imagen.csv",
-                mime="text/csv",
-                key=f"csv_{clave}"
-            )
+        st.image(a_rgb(imagenes["mejorado"]), caption="Imagen mejorada que recibe PREDICCIÓN",
+                 width=420)
 
         st.json(datos, expanded=False)
 
@@ -453,8 +440,12 @@ with st.sidebar:
 
     modulo = st.radio(
         "Módulo",
-        ["VIDEO", "IMAGEN"],
-        format_func={"VIDEO": ":material/videocam: Video", "IMAGEN": ":material/image: Imágenes"}.get,
+        ["VIDEO", "IMAGEN", "PREDICCION"],
+        format_func={
+            "VIDEO": ":material/videocam: Video",
+            "IMAGEN": ":material/image: Imágenes",
+            "PREDICCION": ":material/psychology: Predicciones"
+        }.get,
         label_visibility="collapsed"
     )
 
@@ -823,8 +814,248 @@ def mostrar_modulo_video():
         lista_de_capturas()
 
 
+# ============================================================
+# MODULO PREDICCION
+# ============================================================
+
+EMOCIONES = [
+    ("fatiga", "Fatiga / Ausencia"),
+    ("estres", "Estrés / Ansiedad"),
+    ("tristeza", "Tristeza / Desatención"),
+    ("neutral", "Neutral / Concentración"),
+    ("alegria", "Alegría")
+]
+
+
+def ir_a_prediccion(indice):
+
+    st.session_state["pred_actual"] = indice
+    st.session_state["pred_seguir_ultima"] = False
+    st.session_state["pred_estudiante"] = 1
+
+
+def imagen_con_estudiantes(prediccion, seleccionado):
+    """
+    Imagen mejorada por IMAGEN con el recuadro de cada estudiante.
+    """
+
+    imagen = cv2.imread(prediccion["imagen_mejorada"])
+
+    if imagen is None:
+        return None
+
+    grosor = max(2, max(imagen.shape[:2]) // 400)
+    escala = max(0.5, max(imagen.shape[:2]) / 1600)
+
+    for e in prediccion["estudiantes"]:
+
+        if not e["caja"]:
+            continue
+
+        c = e["caja"]
+        color = (191, 212, 45) if e["numero"] == seleccionado else (235, 160, 60)
+        texto = e["etiqueta"]
+
+        cv2.rectangle(imagen, (c["x1"], c["y1"]), (c["x2"], c["y2"]), color, grosor)
+        (tw, th), _ = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, escala, grosor)
+        cv2.rectangle(imagen, (c["x1"], c["y1"] - th - 10), (c["x1"] + tw + 8, c["y1"]), color, cv2.FILLED)
+        cv2.putText(imagen, texto, (c["x1"] + 4, c["y1"] - 6), cv2.FONT_HERSHEY_SIMPLEX,
+                    escala, (20, 20, 20), max(1, grosor - 1), cv2.LINE_AA)
+
+    return imagen
+
+
+@st.fragment(run_every=2.0)
+def vigilar_predicciones():
+    """
+    Completa en segundo plano las predicciones pendientes y salta a la
+    mas reciente cuando llega una nueva.
+    """
+
+    vigilante.revisar(maximo=1, bloquear=False)
+    integracion_prediccion.completar_pendientes()
+
+    lista = integracion_prediccion.listar_predicciones()
+    ultima = lista[-1]["archivo"] if lista else None
+
+    if ultima != st.session_state.get("pred_ultima"):
+        nueva = st.session_state.get("pred_ultima") is not None
+        st.session_state["pred_ultima"] = ultima
+        if lista and st.session_state.get("pred_seguir_ultima", True):
+            st.session_state["pred_actual"] = len(lista) - 1
+            st.session_state["pred_estudiante"] = 1
+        if nueva:
+            st.toast("🧠 Nueva predicción disponible")
+        st.rerun()
+
+
+def mostrar_modulo_prediccion():
+
+    st.markdown("# :material/psychology: Panel de Inferencia de Predicciones")
+    st.caption(
+        "Resultados del módulo PREDICCIÓN sobre las capturas que procesa IMAGEN: "
+        "estado de cada estudiante, sucesos probables y proyección académica."
+    )
+
+    vigilar_predicciones()
+
+    lista = integracion_prediccion.listar_predicciones()
+
+    if not lista:
+        st.info("Aún no hay predicciones. Aparecerán cuando IMAGEN procese una alerta de VIDEO.")
+        return
+
+    total = len(lista)
+    indice = min(st.session_state.get("pred_actual", total - 1), total - 1)
+    prediccion = lista[indice]
+    estudiantes = prediccion["estudiantes"]
+
+    numero = st.session_state.get("pred_estudiante", 1)
+    estudiante = next((e for e in estudiantes if e["numero"] == numero), estudiantes[0])
+
+    alerta = prediccion.get("alerta_video") or {}
+
+    # --------------------------------------------------------
+    # Fila 1: imagen capturada y estudiantes
+    # --------------------------------------------------------
+
+    c1, c2 = st.columns([1.35, 1.65])
+
+    with c1, st.container(border=True):
+
+        st.markdown("##### :material/photo_camera: Imagen capturada")
+
+        imagen = imagen_con_estudiantes(prediccion, estudiante["numero"])
+
+        if imagen is not None:
+            st.image(a_rgb(imagen), width="stretch")
+
+        n1, n2, n3 = st.columns([1, 2.2, 1], vertical_alignment="center")
+
+        n1.button("◀", width="stretch", disabled=indice == 0, key="pred_ant",
+                  on_click=ir_a_prediccion, args=(indice - 1,))
+        n2.markdown(
+            f"<div class='contador'>Captura <b>{indice + 1}</b> de <b>{total}</b><br>"
+            f"<small>{nombre_objeto(alerta.get('objeto', 'desconocido'))} · "
+            f"{prediccion.get('timestamp') or ''}</small></div>",
+            unsafe_allow_html=True
+        )
+        n3.button("▶", width="stretch", disabled=indice == total - 1, key="pred_sig",
+                  on_click=ir_a_prediccion, args=(indice + 1,))
+
+    with c2, st.container(border=True):
+
+        st.markdown("##### :material/groups: Selección y estado de alumnos")
+
+        columnas = st.columns(2)
+
+        for posicion, e in enumerate(estudiantes):
+
+            p = e["analisis"]["prediccion"]
+            emocion = e["analisis"]["emociones"]["emocion_dominante"]
+            objetos_txt = ", ".join(nombre_objeto(o) for o in e["objetos_no_permitidos"])
+
+            with columnas[posicion % 2], st.container(border=True):
+
+                titulo = e["etiqueta"]
+                if e["confianza_persona"] is not None:
+                    titulo += f" (ID: {e['confianza_persona']:.2f})"
+
+                estado = p["nivel_alerta"] + (f" · {objetos_txt}" if objetos_txt else "")
+
+                st.markdown(f"**{titulo}**  \n{emocion}  \n{estado}  \n"
+                            f"**{p['atencion_pct']}% Atención**")
+
+                st.button(
+                    "Seleccionado" if e["numero"] == estudiante["numero"] else "Ver análisis",
+                    key=f"est_{indice}_{e['numero']}",
+                    width="stretch",
+                    type="primary" if e["numero"] == estudiante["numero"] else "secondary",
+                    on_click=lambda n=e["numero"]: st.session_state.update(pred_estudiante=n)
+                )
+
+    # --------------------------------------------------------
+    # Fila 2: emociones, sucesos y proyeccion del estudiante
+    # --------------------------------------------------------
+
+    analisis = estudiante["analisis"]
+    p = analisis["prediccion"]
+    emociones = analisis["emociones"]
+    motor = prediccion.get("motor") or {}
+
+    d1, d2, d3 = st.columns(3)
+
+    with d1, st.container(border=True):
+
+        st.markdown(f"##### :material/mood: Estado y emociones · {estudiante['etiqueta']}")
+
+        for clave, etiqueta in EMOCIONES:
+            valor = float(emociones.get(clave, 0))
+            st.progress(min(valor / 100, 1.0), text=f"{etiqueta} · {valor:.0f}%")
+
+        st.markdown(pastilla(f"Dominante: {emociones['emocion_dominante']}", "alerta"),
+                    unsafe_allow_html=True)
+
+        rostro = analisis["rostro"]
+        st.caption(
+            f"Rostro detectado: {'sí' if rostro['detectado'] else 'no'} · "
+            f"Postura: {rostro['estado_postura']} · "
+            f"Mirada desviada: {'sí' if rostro['mirada_desviada'] else 'no'}"
+        )
+
+    with d2, st.container(border=True):
+
+        st.markdown(f"##### :material/format_list_bulleted: Sucesos probables · {estudiante['etiqueta']}")
+
+        st.markdown("**Estado del estudiante**")
+        st.markdown(p["prediccion_personal"])
+
+        st.markdown("**Lo que se observa en la imagen**")
+        st.markdown(p["prediccion_video"])
+
+        if motor.get("evidencia"):
+            st.markdown("**Evidencia del motor de reglas**")
+            for ev in motor["evidencia"]:
+                st.markdown(
+                    f"- {nombre_objeto(ev['senal'])}: índice {ev['indice']:.0f} · {ev['explicacion']}"
+                )
+
+    with d3, st.container(border=True):
+
+        st.markdown("##### :material/trending_up: Análisis y proyección académica")
+
+        m1, m2 = st.columns(2)
+        m1.metric("Riesgo de desempeño", f"{p['riesgo_academico_pct']} / 100")
+        m2.metric("Nota proyectada", f"{p['nota_proyectada']} / 20")
+
+        m3, m4 = st.columns(2)
+        m3.metric("Atención", f"{p['atencion_pct']} %")
+        m4.metric("Nivel", p["nivel_alerta"])
+
+        st.info(p["recomendacion_docente"], icon=":material/school:")
+
+        if motor:
+            st.caption(
+                f"Motor de reglas: revisión {motor.get('nivel_revision', '-')} "
+                f"(índice {motor.get('indice_revision', 0):.0f}/100) · "
+                + ("requiere revisión humana" if motor.get("requiere_revision_humana") else "")
+            )
+        elif prediccion.get("error_motor"):
+            st.caption(f"Motor de reglas no disponible: {prediccion['error_motor']}")
+
+    st.caption(
+        ":material/info: Resultados del módulo PREDICCIÓN (AulaPredict). Son estimaciones "
+        "heurísticas a partir de una imagen: no constituyen diagnóstico, nota real ni "
+        "prueba de fraude, y requieren revisión humana."
+    )
+
+
 if modulo == "VIDEO":
     mostrar_modulo_video()
+    st.stop()
+
+if modulo == "PREDICCION":
+    mostrar_modulo_prediccion()
     st.stop()
 
 
@@ -1238,19 +1469,3 @@ else:
             for n, r in enumerate(todas)
         ]), hide_index=True)
 
-        ruta_json = os.path.join(CARPETA_EN_VIVO, "resultados_alertas.json")
-        ruta_csv = os.path.join(CARPETA_EN_VIVO, "resultados_alertas.csv")
-
-        c1, c2, _ = st.columns([1, 1, 3])
-
-        if os.path.exists(ruta_json):
-            with open(ruta_json, "rb") as f:
-                c1.download_button("Descargar JSON (todas)", f.read(),
-                                   file_name="resultados_alertas.json",
-                                   mime="application/json")
-
-        if os.path.exists(ruta_csv):
-            with open(ruta_csv, "rb") as f:
-                c2.download_button("Descargar CSV (todas)", f.read(),
-                                   file_name="resultados_alertas.csv",
-                                   mime="text/csv")

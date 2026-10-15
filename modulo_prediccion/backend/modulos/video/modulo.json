@@ -1,0 +1,11 @@
+{
+  "nombre": "video",
+  "estado": "adaptador_alerta_v1_pendiente_validacion_real",
+  "formatos_aceptados": ["frames", "alerta_VIDEO_schema_version_1"],
+  "validacion": "Pruebas con ejemplo sintético; falta validar una salida real del equipo de VIDEO",
+  "responsable": "equipo de video",
+  "repositorio": "https://github.com/cesarcabanillas1921-bit/SistemaSupervisionExamenes",
+  "artefactos": ["backend/modulos/video/adapter.py"],
+  "funcion": "Detectar objetos con YOLO y entregar clase, confianza, caja y tiempo por fotograma",
+  "entrenamiento": "externo, mantenido por el equipo de video"
+}

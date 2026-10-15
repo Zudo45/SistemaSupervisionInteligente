@@ -1,0 +1,9 @@
+{
+  "nombre": "audio",
+  "estado": "pendiente_repositorio_y_contrato",
+  "responsable": "equipo de audio",
+  "repositorio": null,
+  "artefactos": [],
+  "funcion": "Pendiente de recibir resultados y contrato del equipo de AUDIO",
+  "entrenamiento": "externo; PREDICCIÓN no entrena modelos"
+}

@@ -1,0 +1,4 @@
+# Dependencias del servicio de PREDICCIÓN. Los modelos externos usan sus propios entornos.
+fastapi>=0.110.0
+pydantic>=2.9,<3
+uvicorn[standard]>=0.28.0

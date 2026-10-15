@@ -1,0 +1,11 @@
+{
+  "nombre": "imagen",
+  "estado": "adaptador_exportacion_json_pendiente_validacion_real",
+  "referencia_commit": "eddc6234f338f9011bd1ff5cdf02985b68434167",
+  "validacion": "Ejemplo sintético; falta validar con una salida real del equipo de IMAGEN",
+  "responsable": "equipo de imagen",
+  "repositorio": "https://github.com/Zudo45/SistemaSupervisionExamenes-Imagen",
+  "artefactos": ["backend/modulos/imagen/adapter.py"],
+  "funcion": "Mejorar y verificar las detecciones de video, medir calidad y exportar JSON/CSV",
+  "entrenamiento": "externo, mantenido por el equipo de imagen"
+}
