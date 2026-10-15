@@ -35,7 +35,7 @@ Se recomienda utilizar Python 3.12.
 
 Descargar desde:
 
-https://www.python.org/downloads/release/python-31210/
+https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe
 
 Durante la instalación marcar:
 
