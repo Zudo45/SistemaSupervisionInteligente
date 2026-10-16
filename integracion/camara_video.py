@@ -24,10 +24,10 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from modulo_imagen.config_imagen import CARPETA_PROYECTO  # agrega el proyecto al path
+import modulo_imagen.config_imagen  # noqa: F401  (agrega video/ al path)
 from modulo_imagen.recepcion import detectar_objetos, detectar_objetos_camara
 from modulo_imagen import vigilante
-from modulo_video.transmision import ServidorVideo
+from integracion.transmision import ServidorVideo
 
 from configuracion.config import CAMARA, TIEMPO_ALERTA
 from modulos.deteccion import dibujar_detecciones

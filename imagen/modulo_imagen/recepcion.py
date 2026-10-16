@@ -12,14 +12,11 @@ import threading
 
 import cv2
 
+# config_imagen agrega la carpeta video/ al path
 from modulo_imagen.config_imagen import (
-    CARPETA_PROYECTO,
     LADO_MAXIMO_FRAME,
     INTERVALO_MUESTREO_SEG
 )
-
-if CARPETA_PROYECTO not in sys.path:
-    sys.path.insert(0, CARPETA_PROYECTO)
 
 # Deteccion original del grupo VIDEO
 from modulos import deteccion as _video  # noqa: E402

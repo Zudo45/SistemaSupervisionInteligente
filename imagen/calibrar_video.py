@@ -25,8 +25,16 @@ import cv2
 import numpy as np
 import pandas as pd
 
+import modulo_imagen.config_imagen  # noqa: F401  (agrega video/ al path)
+
 from configuracion.config import CAMARA, TIEMPO_ALERTA
-from modulos.deteccion import modelo, UMBRAL
+from modulos.deteccion import UMBRAL
+
+try:
+    # Version nueva de VIDEO (varios modelos): se calibra su modelo principal
+    from modulos.deteccion import modelo_personalizado as modelo
+except ImportError:
+    from modulos.deteccion import modelo
 
 
 CARPETA_CALIBRACION = os.path.join(

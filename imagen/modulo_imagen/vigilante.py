@@ -230,7 +230,7 @@ def procesar_alerta(nombre_archivo, opciones=None):
 
     # Evento hacia PREDICCION: imagen mejorada + datos de IMAGEN
     try:
-        from modulo_prediccion.integracion import predecir_alerta
+        from integracion.prediccion import predecir_alerta
         predecir_alerta(datos)
     except Exception as error:  # noqa: BLE001
         print(f"PREDICCION no pudo procesar {nombre_archivo}: {error}")

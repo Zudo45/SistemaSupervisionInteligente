@@ -3,7 +3,7 @@ REM Inicia la pagina del modulo IMAGEN.
 REM La primera vez crea el entorno virtual e instala las librerias.
 cd /d "%~dp0"
 call :preparar || exit /b 1
-".venv\Scripts\python.exe" -m streamlit run app_imagen.py
+".venv\Scripts\python.exe" -m streamlit run app.py
 exit /b
 
 :preparar
@@ -16,5 +16,5 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
-".venv\Scripts\python.exe" -m pip install -r requisitos_imagen.txt
+".venv\Scripts\python.exe" -m pip install -r requisitos.txt
 exit /b 0

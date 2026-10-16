@@ -3,21 +3,31 @@
 # ============================================================
 
 import os
+import sys
 
 
-CARPETA_PROYECTO = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
+# Estructura del sistema: cada grupo en su carpeta
+#   video/  imagen/  prediccion/  integracion/
+CARPETA_IMAGEN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAIZ = os.path.dirname(CARPETA_IMAGEN)
+CARPETA_VIDEO = os.path.join(RAIZ, "video")
+CARPETA_PREDICCION = os.path.join(RAIZ, "prediccion")
+
+# El codigo de VIDEO (modulos/, configuracion/, principal.py) y el de
+# la integracion se importan desde sus carpetas
+for _carpeta in (CARPETA_VIDEO, RAIZ):
+    if _carpeta not in sys.path:
+        sys.path.append(_carpeta)
 
 CARPETA_RESULTADOS = os.path.join(
-    CARPETA_PROYECTO,
+    RAIZ,
     "resultados"
 )
 
 # Carpeta donde VIDEO guarda las capturas de sus alarmas
-# (la misma que usa modulos/registro.py)
+# (la misma que usa video/modulos/registro.py)
 CARPETA_ALERTAS_VIDEO = os.path.join(
-    CARPETA_PROYECTO,
+    CARPETA_VIDEO,
     "alertas"
 )
 

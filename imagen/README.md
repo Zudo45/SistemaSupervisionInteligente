@@ -22,43 +22,27 @@ fotograma ─► VIDEO (best.pt) ─► recepción ─► preprocesamiento adapt
 | 5. Características | `modulo_imagen/caracteristicas.py` | Tamaño, posición, forma, color (HSV), textura y relación con la persona |
 | 6. Verificación | `modulo_imagen/verificacion.py` | Mismo modelo de VIDEO antes y después del procesamiento: confianza y detecciones |
 | Calidad | `modulo_imagen/calidad.py` | Brillo, contraste, nitidez (var. Laplaciano), ruido (Immerkær), entropía, PSNR, SSIM |
-| 7. Visualización | `app_imagen.py` | Aplicación Streamlit (local, accesible en la red del laboratorio) |
+| 7. Visualización | `../app.py` (sección Imágenes) | Página web del sistema |
 | Conexión | `modulo_imagen/vigilante.py` | Procesa automáticamente las capturas de la alarma de VIDEO |
 | 8. Exportación | `modulo_imagen/exportacion.py` | JSON por fotograma y CSV por objeto |
 
 ## Conexión con VIDEO (alertas)
 
-Cuando la alarma de VIDEO se dispara, su programa guarda la captura en `alertas/alerta_<objeto>_<fecha>_<hora>.jpg`. La página de IMAGEN vigila esa carpeta cada 2 segundos y procesa automáticamente cada captura nueva:
+Cuando la alarma de VIDEO se dispara, su programa guarda la captura en `video/alertas/alerta_<objeto>_<fecha>_<hora>.jpg`. La página de IMAGEN vigila esa carpeta cada 2 segundos y procesa automáticamente cada captura nueva:
 
-- imágenes anotadas en `resultados/alertas/imagenes/`
-- resultado por alerta en `resultados/alertas/datos/`
-- salida acumulada en `resultados/alertas/resultados_alertas.json` y `.csv`
+- imágenes anotadas en `../resultados/alertas/imagenes/`
+- resultado por alerta en `../resultados/alertas/datos/`
+- salida acumulada en `../resultados/alertas/resultados_alertas.json` y `.csv`
 
 La página permite recorrer las alertas con las flechas ◀ ▶ o con las miniaturas. También se puede vigilar la carpeta sin interfaz con `vigilar_alertas.py`.
 
 `calibrar_video.py` mide, con la cámara y sin guardar imágenes, cómo responde el modelo de VIDEO a cada objeto; sus resultados (`calibracion/calibracion_video.json`) muestran que la detección parpadea entre fotogramas en una webcam.
 
-## Inicio rápido (Windows)
-
-1. Instalar **Python 3.12** marcando "Add Python to PATH".
-2. Descargar el repositorio (`git clone` o botón **Code → Download ZIP**).
-3. Doble clic en **`iniciar_app.bat`**: la primera vez crea el entorno e instala las librerías (tarda varios minutos); luego abre la página en `http://localhost:8501`.
-4. Doble clic en **`iniciar_video.bat`** para ejecutar el sistema de VIDEO con la cámara. Al mostrar un objeto no permitido durante 5 segundos suena la alarma, la captura se guarda en `alertas/` y la página la procesa automáticamente.
-
-Si ya se tienen capturas de la alarma de VIDEO, basta con copiarlas a `alertas/` sin cambiarles el nombre.
-
-## Instalación manual
-
-```
-python -m venv .venv
-.venv\Scripts\python -m pip install -r requisitos_imagen.txt
-```
-
 ## Uso
 
+El módulo se usa desde la página del sistema (ver el `README.md` principal). Herramientas propias de IMAGEN, desde esta carpeta:
+
 ```
-iniciar_app.bat                                           # página web (doble clic)
-iniciar_video.bat                                         # sistema de VIDEO (doble clic)
-.venv\Scripts\python -m streamlit run app_imagen.py      # lo mismo, desde la terminal
-.venv\Scripts\python vigilar_alertas.py                 # vigilante sin interfaz
+..\.venv\Scripts\python vigilar_alertas.py      # procesa las alertas de VIDEO sin la página
+..\.venv\Scripts\python calibrar_video.py       # mide la respuesta del modelo de VIDEO con la cámara
 ```

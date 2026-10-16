@@ -1,16 +1,20 @@
 # ============================================================
 # MODULO IMAGEN - APLICACION WEB
 # Uso:
-#   python -m streamlit run app_imagen.py
+#   python -m streamlit run app.py
 # ============================================================
 
 import os
+import sys
 import json
 import base64
 import socket
 from datetime import datetime
 
 import cv2
+
+# Cada grupo esta en su carpeta: se agregan al path antes de importar
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "imagen"))
 
 import pandas as pd
 import streamlit as st
@@ -28,8 +32,8 @@ from modulo_imagen.segmentacion import aislar_objeto
 from modulo_imagen.mejoramiento import ampliar
 from modulo_imagen import vigilante
 from modulo_imagen.verificacion import emparejar
-from modulo_video.sesion_camara import SesionCamara, TIEMPO_ALERTA, es_no_permitido
-from modulo_prediccion import integracion as integracion_prediccion
+from integracion.camara_video import SesionCamara, TIEMPO_ALERTA, es_no_permitido
+from integracion import prediccion as integracion_prediccion
 from modulo_imagen.visualizacion import (
     dibujar_video,
     superponer_mascara,

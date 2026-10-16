@@ -8,13 +8,13 @@ runs/
 dataset/
 dataset_filtrado/
 
-# Archivos generados por el sistema (fotos de las alertas)
+# Fotos de las alertas y capturas (en cualquier carpeta)
 alertas/
 capturas/
+alertas_anteriores/
 
-# Modulo IMAGEN
+# Entorno y resultados generados
 .venv/
 resultados/
-calibracion/*.csv
+imagen/calibracion/*.csv
 .streamlit/secrets.toml
-alertas_anteriores/

@@ -26,10 +26,11 @@ from modulo_imagen.config_imagen import (
 )
 from modulo_imagen.recepcion import _candado_modelo, _video
 
-CARPETA_MODULO = os.path.dirname(os.path.abspath(__file__))
+from modulo_imagen.config_imagen import CARPETA_PREDICCION  # noqa: E402
 
-if CARPETA_MODULO not in sys.path:
-    sys.path.insert(0, CARPETA_MODULO)
+# El codigo de PREDICCION (prediccion/backend) se importa como "backend"
+if CARPETA_PREDICCION not in sys.path:
+    sys.path.append(CARPETA_PREDICCION)
 
 from backend.entrenamiento_prediccion import predictor  # noqa: E402
 from backend.modulos.prediccion.integracion import integrar_fuentes  # noqa: E402
