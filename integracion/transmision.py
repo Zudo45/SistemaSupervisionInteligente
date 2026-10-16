@@ -6,8 +6,11 @@
 # pagina en cada fotograma.
 # ============================================================
 
+import os
+import json
 import time
 import threading
+from urllib.parse import urlparse, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
@@ -36,6 +39,24 @@ def cartel(texto, detalle=""):
                     cv2.FONT_HERSHEY_SIMPLEX, escala, (200, 200, 200), 2, cv2.LINE_AA)
 
     return cv2.imencode(".jpg", imagen)[1].tobytes()
+
+
+RUTA_TUNEL = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resultados", "tunel.json"
+)
+
+
+def clave_valida(ruta):
+
+    try:
+        with open(RUTA_TUNEL, "r", encoding="utf-8") as f:
+            clave = json.load(f)["clave"]
+    except (OSError, ValueError, KeyError):
+        return False
+
+    consulta = parse_qs(urlparse(ruta).query)
+
+    return consulta.get("k", [""])[0].upper() == clave
 
 
 class ServidorVideo:
@@ -70,6 +91,12 @@ class ServidorVideo:
 
                 if not self.path.startswith("/video.mjpg"):
                     self.send_response(404)
+                    self.end_headers()
+                    return
+
+                # Por internet (tunel) se exige la clave en el link
+                if self.headers.get("Cf-Connecting-Ip") and not clave_valida(self.path):
+                    self.send_response(403)
                     self.end_headers()
                     return
 

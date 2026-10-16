@@ -58,6 +58,14 @@ iniciar_video.bat                                   # sistema de VIDEO en su pro
 
 Desde otra PC de la misma red, la página se abre con la dirección que aparece en su barra lateral (`http://<IP>:8501`). El video de la cámara usa además el puerto `8502`.
 
+### Acceso desde otras redes (link público)
+
+Doble clic en **`iniciar_publico.bat`** (después de haber usado `iniciar_app.bat` una vez). Descarga `cloudflared` (programa oficial de Cloudflare, sin cuenta) y crea un link público `https://…trycloudflare.com`, que funciona desde cualquier red (datos móviles, otra wifi).
+
+- El link y una **clave** aparecen en la ventana negra y en la barra lateral de la página.
+- Quien entra por el link debe ingresar la clave y **solo puede mirar**: los botones de la cámara solo están en la laptop anfitriona.
+- El link cambia cada vez que se inicia. Al cerrar la ventana negra, el link deja de funcionar.
+
 ## Datos y privacidad
 
 Las capturas de las alarmas (`video/alertas/`) y los resultados generados (`resultados/`) **no se suben** al repositorio (ver `.gitignore`).

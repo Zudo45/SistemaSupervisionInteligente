@@ -99,6 +99,66 @@ div[data-testid="stMetric"] {
 
 
 # ============================================================
+# ACCESO POR INTERNET (TUNEL)
+# Con iniciar_publico.bat la pagina tiene un link publico. Las
+# visitas que llegan por ese link necesitan la clave y no pueden
+# manejar la camara; en la laptop anfitriona se entra directo.
+# ============================================================
+
+RUTA_TUNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultados", "tunel.json")
+
+
+def datos_tunel():
+
+    try:
+        with open(RUTA_TUNEL, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def es_visita_remota():
+
+    cabeceras = st.context.headers
+    host = cabeceras.get("Host", "")
+
+    return bool(cabeceras.get("Cf-Connecting-Ip")) or host.endswith(".trycloudflare.com")
+
+
+def pedir_clave():
+
+    tunel = datos_tunel()
+
+    if not es_visita_remota() or not tunel or st.session_state.get("clave_ok"):
+        return
+
+    _, centro, _ = st.columns([1, 1.2, 1])
+
+    with centro:
+
+        st.markdown("<div style='height:12vh'></div>", unsafe_allow_html=True)
+        st.markdown("## Sistema de Supervisión Inteligente")
+        st.caption("Acceso por internet: ingresa la clave que te compartieron.")
+
+        with st.form("clave_visita"):
+
+            clave = st.text_input("Clave", type="password")
+
+            if st.form_submit_button("Ingresar", width="stretch"):
+
+                if clave.strip().upper() == tunel["clave"]:
+                    st.session_state["clave_ok"] = True
+                    st.rerun()
+
+                st.error("Clave incorrecta")
+
+    st.stop()
+
+
+pedir_clave()
+
+
+# ============================================================
 # UTILIDADES
 # ============================================================
 
@@ -465,9 +525,18 @@ with st.sidebar:
             label_visibility="collapsed"
         )
 
-    st.divider()
-    st.markdown("**Acceso desde otra PC (misma red)**")
-    st.code(f"http://{ip_local()}:8501", language=None)
+    tunel = datos_tunel()
+
+    if tunel and not es_visita_remota():
+        st.divider()
+        st.markdown("**Acceso por internet**")
+        st.code(tunel["pagina"], language=None)
+        st.markdown(f"Clave para las visitas: **{tunel['clave']}**")
+
+    if not es_visita_remota():
+        st.divider()
+        st.markdown("**Acceso desde otra PC (misma red)**")
+        st.code(f"http://{ip_local()}:8501", language=None)
 
 
 # El analisis principal trabaja siempre sobre la captura real de VIDEO
@@ -494,7 +563,7 @@ def es_anfitrion():
     Solo la laptop donde corre la pagina puede manejar la camara.
     """
 
-    return st.context.ip_address in (None, "127.0.0.1", "::1")
+    return st.context.ip_address in (None, "127.0.0.1", "::1") and not es_visita_remota()
 
 
 NOMBRES_OBJETO = {
@@ -795,10 +864,16 @@ def mostrar_modulo_video():
         if sesion.video.puerto:
             # Flujo MJPEG servido por la laptop de la pagina, con el mismo
             # nombre/IP con el que se abrio la pagina
-            host = st.context.headers.get("Host", "localhost").split(":")[0]
+            tunel = datos_tunel()
+
+            if es_visita_remota() and tunel:
+                fuente = f"{tunel['video']}/video.mjpg?k={tunel['clave']}"
+            else:
+                host = st.context.headers.get("Host", "localhost").split(":")[0]
+                fuente = f"http://{host}:{sesion.video.puerto}/video.mjpg"
+
             st.markdown(
-                f"<img style='width:100%;border-radius:10px' "
-                f"src='http://{host}:{sesion.video.puerto}/video.mjpg'>",
+                f"<img style='width:100%;border-radius:10px' src='{fuente}'>",
                 unsafe_allow_html=True
             )
         else:
