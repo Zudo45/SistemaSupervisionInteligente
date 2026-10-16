@@ -43,7 +43,7 @@ from modulo_imagen.visualizacion import (
 
 
 st.set_page_config(
-    page_title="Supervision de Examenes",
+    page_title="Sistema de Supervisión Inteligente",
     page_icon="🖼️",
     layout="wide"
 )
