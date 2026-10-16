@@ -819,11 +819,13 @@ def mostrar_modulo_video():
 # ============================================================
 
 EMOCIONES = [
-    ("fatiga", "Fatiga / Ausencia"),
-    ("estres", "Estrés / Ansiedad"),
-    ("tristeza", "Tristeza / Desatención"),
     ("neutral", "Neutral / Concentración"),
-    ("alegria", "Alegría")
+    ("felicidad", "Felicidad"),
+    ("tristeza", "Tristeza / Desatención"),
+    ("enojo", "Enojo / Frustración"),
+    ("miedo", "Miedo / Ansiedad"),
+    ("sorpresa", "Sorpresa / Sobresalto"),
+    ("disgusto", "Disgusto")
 ]
 
 
@@ -831,12 +833,13 @@ def ir_a_prediccion(indice):
 
     st.session_state["pred_actual"] = indice
     st.session_state["pred_seguir_ultima"] = False
-    st.session_state["pred_estudiante"] = 1
+    st.session_state["pred_estudiante"] = None
 
 
 def imagen_con_estudiantes(prediccion, seleccionado):
     """
-    Imagen mejorada por IMAGEN con el recuadro de cada estudiante.
+    Imagen mejorada por IMAGEN con el recuadro de cada alumno y el
+    objeto no permitido que se le asigno.
     """
 
     imagen = cv2.imread(prediccion["imagen_mejorada"])
@@ -847,20 +850,22 @@ def imagen_con_estudiantes(prediccion, seleccionado):
     grosor = max(2, max(imagen.shape[:2]) // 400)
     escala = max(0.5, max(imagen.shape[:2]) / 1600)
 
-    for e in prediccion["estudiantes"]:
-
-        if not e["caja"]:
-            continue
-
-        c = e["caja"]
-        color = (191, 212, 45) if e["numero"] == seleccionado else (235, 160, 60)
-        texto = e["etiqueta"]
-
+    def caja(c, color, texto):
         cv2.rectangle(imagen, (c["x1"], c["y1"]), (c["x2"], c["y2"]), color, grosor)
         (tw, th), _ = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, escala, grosor)
-        cv2.rectangle(imagen, (c["x1"], c["y1"] - th - 10), (c["x1"] + tw + 8, c["y1"]), color, cv2.FILLED)
-        cv2.putText(imagen, texto, (c["x1"] + 4, c["y1"] - 6), cv2.FONT_HERSHEY_SIMPLEX,
+        y = max(th + 10, c["y1"])
+        cv2.rectangle(imagen, (c["x1"], y - th - 10), (c["x1"] + tw + 8, y), color, cv2.FILLED)
+        cv2.putText(imagen, texto, (c["x1"] + 4, y - 6), cv2.FONT_HERSHEY_SIMPLEX,
                     escala, (20, 20, 20), max(1, grosor - 1), cv2.LINE_AA)
+
+    for e in prediccion["estudiantes"]:
+
+        color = (191, 212, 45) if e["id"] == seleccionado else (235, 160, 60)
+        caja(e["caja"], color, f"{e['nombre']} ({e['subId']})")
+
+        if e.get("objeto_caja"):
+            o = e["objeto_caja"]
+            caja(o, (60, 60, 230), f"{nombre_objeto(o['clase'])} {o['confianza']:.2f}")
 
     return imagen
 
@@ -883,18 +888,29 @@ def vigilar_predicciones():
         st.session_state["pred_ultima"] = ultima
         if lista and st.session_state.get("pred_seguir_ultima", True):
             st.session_state["pred_actual"] = len(lista) - 1
-            st.session_state["pred_estudiante"] = 1
+            st.session_state["pred_estudiante"] = None
         if nueva:
             st.toast("🧠 Nueva predicción disponible")
         st.rerun()
+
+
+def lista_con_probabilidad(elementos):
+
+    for el in elementos:
+        st.markdown(
+            f"<div style='display:flex;justify-content:space-between;gap:.6rem;"
+            f"padding:.35rem .6rem;margin-bottom:.3rem;border-radius:8px;background:#1E293B'>"
+            f"<span>• {el['texto']}</span><b style='white-space:nowrap'>{el['prob']}% prob.</b></div>",
+            unsafe_allow_html=True
+        )
 
 
 def mostrar_modulo_prediccion():
 
     st.markdown("# :material/psychology: Panel de Inferencia de Predicciones")
     st.caption(
-        "Resultados del módulo PREDICCIÓN sobre las capturas que procesa IMAGEN: "
-        "estado de cada estudiante, sucesos probables y proyección académica."
+        "Resultados del módulo PREDICCIÓN sobre las capturas que procesa IMAGEN: estado y "
+        "emociones de cada alumno, sucesos probables y proyección académica."
     )
 
     vigilar_predicciones()
@@ -909,14 +925,17 @@ def mostrar_modulo_prediccion():
     indice = min(st.session_state.get("pred_actual", total - 1), total - 1)
     prediccion = lista[indice]
     estudiantes = prediccion["estudiantes"]
-
-    numero = st.session_state.get("pred_estudiante", 1)
-    estudiante = next((e for e in estudiantes if e["numero"] == numero), estudiantes[0])
-
     alerta = prediccion.get("alerta_video") or {}
 
+    # Alumno seleccionado: por defecto, el de mayor riesgo
+    elegido = st.session_state.get("pred_estudiante")
+    estudiante = next((e for e in estudiantes if e["id"] == elegido), None)
+
+    if estudiante is None and estudiantes:
+        estudiante = max(estudiantes, key=lambda e: e["score"])
+
     # --------------------------------------------------------
-    # Fila 1: imagen capturada y estudiantes
+    # Fila 1: imagen capturada y alumnos
     # --------------------------------------------------------
 
     c1, c2 = st.columns([1.35, 1.65])
@@ -925,7 +944,7 @@ def mostrar_modulo_prediccion():
 
         st.markdown("##### :material/photo_camera: Imagen capturada")
 
-        imagen = imagen_con_estudiantes(prediccion, estudiante["numero"])
+        imagen = imagen_con_estudiantes(prediccion, estudiante["id"] if estudiante else None)
 
         if imagen is not None:
             st.image(a_rgb(imagen), width="stretch")
@@ -945,108 +964,99 @@ def mostrar_modulo_prediccion():
 
     with c2, st.container(border=True):
 
-        st.markdown("##### :material/groups: Selección y estado de alumnos")
+        st.markdown("##### :material/groups: Selección y estado de alumnos en aula")
+
+        if not estudiantes:
+            st.info(prediccion["captura"].get(
+                "mensaje", "No se detectaron estudiantes en la captura."
+            ))
 
         columnas = st.columns(2)
 
         for posicion, e in enumerate(estudiantes):
 
-            p = e["analisis"]["prediccion"]
-            emocion = e["analisis"]["emociones"]["emocion_dominante"]
-            objetos_txt = ", ".join(nombre_objeto(o) for o in e["objetos_no_permitidos"])
-
             with columnas[posicion % 2], st.container(border=True):
 
-                titulo = e["etiqueta"]
-                if e["confianza_persona"] is not None:
-                    titulo += f" (ID: {e['confianza_persona']:.2f})"
+                riesgo = "🔴 " if e.get("esRiesgoAlto") else ""
 
-                estado = p["nivel_alerta"] + (f" · {objetos_txt}" if objetos_txt else "")
-
-                st.markdown(f"**{titulo}**  \n{emocion}  \n{estado}  \n"
-                            f"**{p['atencion_pct']}% Atención**")
-
-                st.button(
-                    "Seleccionado" if e["numero"] == estudiante["numero"] else "Ver análisis",
-                    key=f"est_{indice}_{e['numero']}",
-                    width="stretch",
-                    type="primary" if e["numero"] == estudiante["numero"] else "secondary",
-                    on_click=lambda n=e["numero"]: st.session_state.update(pred_estudiante=n)
+                st.markdown(
+                    f"**{riesgo}{e['nombre']} (ID: {e['subId']})**  \n"
+                    f"{e['estado']}  \n"
+                    f"**{e['atencion']}% Atención**"
                 )
 
+                st.button(
+                    "Seleccionado" if estudiante and e["id"] == estudiante["id"] else "Ver análisis",
+                    key=f"est_{indice}_{e['id']}",
+                    width="stretch",
+                    type="primary" if estudiante and e["id"] == estudiante["id"] else "secondary",
+                    on_click=lambda i=e["id"]: st.session_state.update(pred_estudiante=i)
+                )
+
+    if not estudiante:
+        return
+
     # --------------------------------------------------------
-    # Fila 2: emociones, sucesos y proyeccion del estudiante
+    # Fila 2: emociones, sucesos y proyeccion del alumno
     # --------------------------------------------------------
 
-    analisis = estudiante["analisis"]
-    p = analisis["prediccion"]
-    emociones = analisis["emociones"]
+    emociones = estudiante["emociones"]
     motor = prediccion.get("motor") or {}
 
     d1, d2, d3 = st.columns(3)
 
     with d1, st.container(border=True):
 
-        st.markdown(f"##### :material/mood: Estado y emociones · {estudiante['etiqueta']}")
+        st.markdown(f"##### :material/mood: Estado y emociones · {estudiante['nombre']}")
 
-        for clave, etiqueta in EMOCIONES:
+        for clave, etiqueta in sorted(EMOCIONES, key=lambda x: -float(emociones.get(x[0], 0))):
             valor = float(emociones.get(clave, 0))
             st.progress(min(valor / 100, 1.0), text=f"{etiqueta} · {valor:.0f}%")
 
-        st.markdown(pastilla(f"Dominante: {emociones['emocion_dominante']}", "alerta"),
+        st.markdown(pastilla(f"Dominante: {emociones['dominante']}", "alerta"),
                     unsafe_allow_html=True)
 
-        rostro = analisis["rostro"]
-        st.caption(
-            f"Rostro detectado: {'sí' if rostro['detectado'] else 'no'} · "
-            f"Postura: {rostro['estado_postura']} · "
-            f"Mirada desviada: {'sí' if rostro['mirada_desviada'] else 'no'}"
-        )
+        st.caption(f"Acción detectada: {estudiante.get('accionDetectada', '-')}")
 
     with d2, st.container(border=True):
 
-        st.markdown(f"##### :material/format_list_bulleted: Sucesos probables · {estudiante['etiqueta']}")
+        st.markdown(f"##### :material/format_list_bulleted: Sucesos probables · {estudiante['nombre']}")
 
-        st.markdown("**Estado del estudiante**")
-        st.markdown(p["prediccion_personal"])
+        st.markdown("**Acontecimientos previos (causas probables)**")
+        lista_con_probabilidad(estudiante.get("causas", []))
 
-        st.markdown("**Lo que se observa en la imagen**")
-        st.markdown(p["prediccion_video"])
-
-        if motor.get("evidencia"):
-            st.markdown("**Evidencia del motor de reglas**")
-            for ev in motor["evidencia"]:
-                st.markdown(
-                    f"- {nombre_objeto(ev['senal'])}: índice {ev['indice']:.0f} · {ev['explicacion']}"
-                )
+        st.markdown("**Acontecimientos futuros (consecuencias estimadas)**")
+        lista_con_probabilidad(estudiante.get("consecuencias", []))
 
     with d3, st.container(border=True):
 
         st.markdown("##### :material/trending_up: Análisis y proyección académica")
 
-        m1, m2 = st.columns(2)
-        m1.metric("Riesgo de desempeño", f"{p['riesgo_academico_pct']} / 100")
-        m2.metric("Nota proyectada", f"{p['nota_proyectada']} / 20")
+        st.metric(estudiante.get("nivelRiesgo", "Riesgo de desempeño"), f"{estudiante['score']} / 100")
 
-        m3, m4 = st.columns(2)
-        m3.metric("Atención", f"{p['atencion_pct']} %")
-        m4.metric("Nivel", p["nivel_alerta"])
+        if estudiante.get("alertaExamen"):
+            st.error(estudiante["alertaExamen"], icon=":material/warning:")
 
-        st.info(p["recomendacion_docente"], icon=":material/school:")
+        if estudiante.get("narrativa"):
+            st.info(estudiante["narrativa"], icon=":material/smart_toy:")
+
+        if estudiante.get("objetos_no_permitidos"):
+            st.caption(
+                "Objeto detectado por VIDEO y verificado por IMAGEN: "
+                + ", ".join(nombre_objeto(o) for o in estudiante["objetos_no_permitidos"])
+            )
 
         if motor:
             st.caption(
-                f"Motor de reglas: revisión {motor.get('nivel_revision', '-')} "
-                f"(índice {motor.get('indice_revision', 0):.0f}/100) · "
-                + ("requiere revisión humana" if motor.get("requiere_revision_humana") else "")
+                f"Motor de reglas de PREDICCIÓN: revisión {motor.get('nivel_revision', '-')} "
+                f"(índice {motor.get('indice_revision', 0):.0f}/100)"
+                + (" · requiere revisión humana" if motor.get("requiere_revision_humana") else "")
             )
-        elif prediccion.get("error_motor"):
-            st.caption(f"Motor de reglas no disponible: {prediccion['error_motor']}")
 
     st.caption(
-        ":material/info: Resultados del módulo PREDICCIÓN (AulaPredict). Son estimaciones "
-        "heurísticas a partir de una imagen: no constituyen diagnóstico, nota real ni "
-        "prueba de fraude, y requieren revisión humana."
+        ":material/info: Resultados del módulo PREDICCIÓN (AulaPredict). Son estimaciones a "
+        "partir de una imagen: no constituyen diagnóstico, nota real ni prueba de fraude, y "
+        "requieren revisión humana."
     )
 
 

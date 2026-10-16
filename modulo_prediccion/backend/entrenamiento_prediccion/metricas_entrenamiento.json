@@ -1,0 +1,202 @@
+{
+  "modulo": "AulaPredict - Predicción Universitaria",
+  "version": "2.5.0",
+  "soporte": "7 Emociones Universales + Ingesta Multimodal (Imagen + Acción)",
+  "fecha": "2026-10-15",
+  "modelo_facial_7_emociones": {
+    "accuracy": 0.9901785714285715,
+    "clases": [
+      "neutral",
+      "felicidad",
+      "tristeza",
+      "enojo",
+      "miedo",
+      "sorpresa",
+      "disgusto"
+    ],
+    "clases_legibles": [
+      "Neutral (😐)",
+      "Felicidad (😊)",
+      "Tristeza (😢)",
+      "Enojo (😠)",
+      "Miedo (😨)",
+      "Sorpresa (😲)",
+      "Disgusto (🤢)"
+    ],
+    "classification_report": {
+      "Neutral (😐)": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 160.0
+      },
+      "Felicidad (😊)": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 160.0
+      },
+      "Tristeza (😢)": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 160.0
+      },
+      "Enojo (😠)": {
+        "precision": 0.9748427672955975,
+        "recall": 0.96875,
+        "f1-score": 0.9717868338557993,
+        "support": 160.0
+      },
+      "Miedo (😨)": {
+        "precision": 0.98125,
+        "recall": 0.98125,
+        "f1-score": 0.98125,
+        "support": 160.0
+      },
+      "Sorpresa (😲)": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 160.0
+      },
+      "Disgusto (🤢)": {
+        "precision": 0.9751552795031055,
+        "recall": 0.98125,
+        "f1-score": 0.9781931464174455,
+        "support": 160.0
+      },
+      "accuracy": 0.9901785714285715,
+      "macro avg": {
+        "precision": 0.9901782923998148,
+        "recall": 0.9901785714285715,
+        "f1-score": 0.9901757114676064,
+        "support": 1120.0
+      },
+      "weighted avg": {
+        "precision": 0.9901782923998147,
+        "recall": 0.9901785714285715,
+        "f1-score": 0.9901757114676063,
+        "support": 1120.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        160,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        160,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        160,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        155,
+        1,
+        0,
+        4
+      ],
+      [
+        0,
+        0,
+        0,
+        3,
+        157,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        160,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        2,
+        0,
+        157
+      ]
+    ],
+    "features": [
+      "eye_openness",
+      "eyebrow_slope",
+      "mouth_smile",
+      "mouth_open",
+      "head_tilt",
+      "head_pitch",
+      "gaze_stability",
+      "blink_rate",
+      "facial_tension"
+    ]
+  },
+  "modelo_sucesos_multimodal": {
+    "mae_global": 3.4490800306691134,
+    "r2_score": 0.9019501849201894,
+    "mae_por_variable": {
+      "prob_desvelo": 3.2683280804232746,
+      "prob_conflicto": 3.7814630215171663,
+      "prob_frustracion_tema": 4.006977423172606,
+      "prob_presion_evaluacion": 3.695650735156449,
+      "prob_descanso_preparacion": 2.8635247537781874,
+      "prob_distraccion_externa": 1.7751956570432845,
+      "prob_jalar_parcial": 3.934502578474174,
+      "prob_bloqueo_retencion": 3.8564100810939888,
+      "score_riesgo": 3.445034629291873,
+      "nivel_atencion": 3.863713346740129
+    },
+    "features": [
+      "p_neutral",
+      "p_felicidad",
+      "p_tristeza",
+      "p_enojo",
+      "p_miedo",
+      "p_sorpresa",
+      "p_disgusto",
+      "accion_celular",
+      "accion_audifonos",
+      "accion_mirada_desviada",
+      "accion_laptop_otra_ventana",
+      "accion_postura_cansancio"
+    ],
+    "targets": [
+      "prob_desvelo",
+      "prob_conflicto",
+      "prob_frustracion_tema",
+      "prob_presion_evaluacion",
+      "prob_descanso_preparacion",
+      "prob_distraccion_externa",
+      "prob_jalar_parcial",
+      "prob_bloqueo_retencion",
+      "score_riesgo",
+      "nivel_atencion"
+    ]
+  }
+}

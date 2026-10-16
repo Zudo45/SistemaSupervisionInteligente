@@ -86,6 +86,53 @@ async def vision_analizar(request: Request):
         raise HTTPException(500, f"Error en procesamiento de visión: {str(e)}")
 
 
+@app.post("/api/prediccion/analizar-captura")
+async def prediccion_analizar_captura(request: Request):
+    """
+    Endpoint principal del Módulo de Predicción:
+    Recibe la imagen capturada por la cámara o subida por el usuario,
+    detecta los alumnos en el encuadre y ejecuta los modelos entrenados
+    para inferir emociones, sucesos previos/futuros y riesgo de jalar.
+    """
+    try:
+        cuerpo = await request.json()
+    except Exception:
+        raise HTTPException(400, "Cuerpo JSON inválido")
+
+    imagen_b64 = cuerpo.get("imagen_b64")
+    if not imagen_b64 or not isinstance(imagen_b64, str):
+        raise HTTPException(422, "Se requiere imagen_b64 en formato base64")
+
+    contexto_externo = cuerpo.get("contexto_externo")
+
+    try:
+        from backend.entrenamiento_prediccion.predictor import procesar_captura_imagen
+        return await run_in_threadpool(procesar_captura_imagen, imagen_b64, contexto_externo)
+    except Exception as e:
+        raise HTTPException(500, f"Error al procesar predicción de captura: {str(e)}")
+
+
+@app.get("/api/prediccion/ejemplo-aula")
+def prediccion_ejemplo_aula():
+    """
+    Retorna un escenario de captura grupal de aula universitaria con 5 estudiantes
+    para pruebas rápidas sin encender cámara física.
+    """
+    from backend.entrenamiento_prediccion.predictor import obtener_escenario_aula_ejemplo
+    return obtener_escenario_aula_ejemplo()
+
+
+@app.get("/api/prediccion/modelo/metricas")
+def prediccion_metricas():
+    """
+    Retorna las métricas del pipeline de entrenamiento del Módulo de Predicción.
+    """
+    ruta_json = RAIZ / "backend" / "entrenamiento_prediccion" / "metricas_entrenamiento.json"
+    if ruta_json.is_file():
+        return json.loads(ruta_json.read_text(encoding="utf-8"))
+    return {"estado": "en_entrenamiento", "mensaje": "Ejecutar entrenar_prediccion.py"}
+
+
 app.mount("/", StaticFiles(directory=RAIZ / "frontend", html=True), name="prueba-local")
 
 

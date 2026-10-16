@@ -4,9 +4,8 @@
 # PREDICCION la imagen mejorada (limpia) y los datos de IMAGEN:
 #   - integrar_fuentes(): motor de reglas de PREDICCION, que recibe
 #     el JSON de IMAGEN tal cual (su adaptador ya lo admite).
-#   - procesar_frame(): analisis de PREDICCION (rostro, emociones,
-#     atencion, proyeccion) sobre cada estudiante, recortando cada
-#     persona detectada por VIDEO en la imagen mejorada.
+#   - procesar_captura_imagen(): modelos entrenados de PREDICCION
+#     (alumnos, 7 emociones, causas, consecuencias y riesgo).
 #
 # El codigo de PREDICCION (carpeta backend/) se usa sin modificar.
 # ============================================================
@@ -23,43 +22,47 @@ import cv2
 from modulo_imagen.config_imagen import (
     CARPETA_RESULTADOS,
     CARPETA_ALERTAS_VIDEO,
-    CLASES_NO_PERMITIDAS,
-    MARGEN_RECORTE
+    CLASES_NO_PERMITIDAS
 )
-from modulo_imagen.recepcion import detectar_objetos
+from modulo_imagen.recepcion import _candado_modelo, _video
 
 CARPETA_MODULO = os.path.dirname(os.path.abspath(__file__))
 
 if CARPETA_MODULO not in sys.path:
     sys.path.insert(0, CARPETA_MODULO)
 
-from backend.modulos import vision_service  # noqa: E402
+from backend.entrenamiento_prediccion import predictor  # noqa: E402
 from backend.modulos.prediccion.integracion import integrar_fuentes  # noqa: E402
-
-from configuracion.config import TIEMPO_ALERTA  # noqa: E402
 
 
 CARPETA_PREDICCIONES = os.path.join(CARPETA_RESULTADOS, "prediccion")
+
+# Acciones que PREDICCION entiende para cada objeto de VIDEO
+ACCIONES = {
+    "telefono": "uso_celular",
+    "audifonos": "uso_audifonos"
+}
 
 _candado = threading.Lock()
 
 
 # ------------------------------------------------------------
-# PREDICCION carga su propia copia del modelo de VIDEO y fija los
-# hilos de PyTorch para todo el programa. Aqui se le hace usar el
-# mismo modelo de VIDEO que ya usa la pagina (mismas clases y salida).
+# PREDICCION carga su propia copia del modelo de VIDEO (best.pt).
+# Se le pasa el mismo modelo que ya usa la pagina, protegido con el
+# mismo candado, para no cargarlo dos veces ni usarlo a la vez.
 # ------------------------------------------------------------
 
-def _detectar_con_modelo_compartido(imagen):
+class _ModeloCompartido:
 
-    return [
-        {**d, "confianza": round(float(d["confianza"]), 2)}
-        for d in detectar_objetos(imagen)
-    ]
+    def __init__(self, modelo):
+        self._modelo = modelo
+
+    def __call__(self, *args, **kwargs):
+        with _candado_modelo:
+            return self._modelo(*args, **kwargs)
 
 
-vision_service.detectar_objetos_en_frame = _detectar_con_modelo_compartido
-vision_service._modelo_yolo = "modelo de VIDEO compartido"
+predictor._YOLO_BEST = _ModeloCompartido(_video.modelo_personalizado)
 
 
 # ============================================================
@@ -76,17 +79,61 @@ def _a_base64(imagen):
     return base64.b64encode(cv2.imencode(".jpg", imagen)[1].tobytes()).decode()
 
 
-def _recortar(imagen, caja, margen=MARGEN_RECORTE):
+def _caja_en_pixeles(caja_relativa, ancho, alto):
+
+    return {
+        "x1": int(caja_relativa["x"] * ancho),
+        "y1": int(caja_relativa["y"] * alto),
+        "x2": int((caja_relativa["x"] + caja_relativa["w"]) * ancho),
+        "y2": int((caja_relativa["y"] + caja_relativa["h"]) * alto)
+    }
+
+
+def _dentro(objeto, caja, margen=0.15):
+    """
+    El centro del objeto cae dentro de la caja del alumno (ampliada).
+    """
+
+    mx = (caja["x2"] - caja["x1"]) * margen
+    my = (caja["y2"] - caja["y1"]) * margen
+    cx = (objeto["x1"] + objeto["x2"]) / 2
+    cy = (objeto["y1"] + objeto["y2"]) / 2
+
+    return caja["x1"] - mx <= cx <= caja["x2"] + mx and caja["y1"] - my <= cy <= caja["y2"] + my
+
+
+def _distancia(objeto, caja):
+    """
+    Distancia del centro del objeto al centro de la cabeza/torso del
+    alumno (parte superior de su recuadro).
+    """
+
+    cx = (objeto["x1"] + objeto["x2"]) / 2
+    cy = (objeto["y1"] + objeto["y2"]) / 2
+    px = (caja["x1"] + caja["x2"]) / 2
+    py = caja["y1"] + (caja["y2"] - caja["y1"]) * 0.35
+
+    return ((cx - px) ** 2 + (cy - py) ** 2) ** 0.5
+
+
+def _recortar(imagen, caja, margen=0.15):
 
     alto, ancho = imagen.shape[:2]
-
     mx = int((caja["x2"] - caja["x1"]) * margen)
     my = int((caja["y2"] - caja["y1"]) * margen)
 
     x1, y1 = max(0, caja["x1"] - mx), max(0, caja["y1"] - my)
     x2, y2 = min(ancho, caja["x2"] + mx), min(alto, caja["y2"] + my)
 
-    return imagen[y1:y2, x1:x2]
+    return imagen[y1:y2, x1:x2], (x1, y1)
+
+
+# Campos de analisis que se toman del recorte con contexto
+CAMPOS_ANALISIS = (
+    "estado", "accionDetectada", "estadoClase", "atencion", "tipoAtencion",
+    "emociones", "causas", "consecuencias", "score", "nivelRiesgo",
+    "esRiesgoAlto", "alertaExamen", "narrativa"
+)
 
 
 # ============================================================
@@ -106,6 +153,8 @@ def predecir_alerta(datos):
         if imagen is None:
             raise FileNotFoundError("No se encontro la imagen mejorada de IMAGEN")
 
+        alto, ancho = imagen.shape[:2]
+
         # 1. Motor de reglas de PREDICCION con el JSON de IMAGEN
         try:
             motor = integrar_fuentes({"imagen": datos})
@@ -113,64 +162,77 @@ def predecir_alerta(datos):
         except Exception as error:  # noqa: BLE001
             motor, error_motor = None, str(error)
 
-        # 2. Analisis por estudiante (cada persona detectada por VIDEO)
-        objetos = datos["objetos"]
-        personas = [o for o in objetos if o["clase"] == "persona"]
+        # 2. Modelos entrenados de PREDICCION sobre la imagen completa:
+        #    detectan a todos los alumnos
+        captura = predictor.procesar_captura_imagen(_a_base64(imagen), None)
 
-        # Objetos no permitidos asociados a cada persona (indice de IMAGEN)
-        asociados = {i: [] for i in range(len(personas))}
+        # 3. Objetos no permitidos que VIDEO detecto e IMAGEN verifico
+        objetos = [
+            o for o in datos["objetos"]
+            if o["clase"] in CLASES_NO_PERMITIDAS
+            and o["estado"] in ("confirmada", "recuperada")
+        ]
+
+        # 4. Cada objeto se asigna a UN alumno: el mas cercano entre los
+        #    que lo contienen (en un aula los recuadros se superponen).
+        #    Solo ese alumno se vuelve a analizar con ese contexto.
+        estudiantes = captura.get("estudiantes", [])
+
+        for estudiante in estudiantes:
+            estudiante["caja"] = _caja_en_pixeles(estudiante["box"], ancho, alto)
+
+        asignados = {id(e): [] for e in estudiantes}
 
         for o in objetos:
-            indice = o["caracteristicas"].get("persona_asociada")
-            if o["clase"] in CLASES_NO_PERMITIDAS and indice is not None and indice in asociados:
-                asociados[indice].append(o["clase"])
 
-        # Numeracion de izquierda a derecha, como se ven en la imagen
-        orden = sorted(range(len(personas)), key=lambda i: personas[i]["x1"])
+            candidatos = [e for e in estudiantes if _dentro(o, e["caja"])]
 
-        estudiantes = []
+            if candidatos:
+                elegido = min(candidatos, key=lambda e: _distancia(o, e["caja"]))
+                asignados[id(elegido)].append(o)
 
-        for numero, i in enumerate(orden, start=1):
+        for estudiante in estudiantes:
 
-            persona = personas[i]
-            recorte = _recortar(imagen, persona)
+            caja = estudiante["caja"]
+            suyos = asignados[id(estudiante)]
+            estudiante["objetos_no_permitidos"] = sorted({o["clase"] for o in suyos})
 
-            analisis = vision_service.procesar_frame(
-                _a_base64(recorte),
-                modo="captura",
-                aplicar_mejora=False,          # IMAGEN ya mejoro la imagen
-                segundos_distraccion=float(TIEMPO_ALERTA) if asociados[i] else 0.0
-            )
-            analisis.pop("imagen_mejorada_hd", None)
+            if not suyos:
+                continue
 
-            estudiantes.append({
-                "numero": numero,
-                "etiqueta": f"Estudiante {numero}",
-                "confianza_persona": persona["confianza_video"],
-                "caja": {k: persona[k] for k in ("x1", "y1", "x2", "y2")},
-                "objetos_no_permitidos": asociados[i],
-                "analisis": analisis
-            })
+            recorte, (ox, oy) = _recortar(imagen, caja)
 
-        # Sin personas detectadas: se analiza la imagen completa
-        if not estudiantes:
+            contexto = {
+                "objetos": estudiante["objetos_no_permitidos"],
+                "acciones_detectadas": sorted({
+                    ACCIONES[c] for c in estudiante["objetos_no_permitidos"] if c in ACCIONES
+                })
+            }
 
-            analisis = vision_service.procesar_frame(
-                _a_base64(imagen), modo="captura", aplicar_mejora=False,
-                segundos_distraccion=float(TIEMPO_ALERTA)
-            )
-            analisis.pop("imagen_mejorada_hd", None)
+            individual = predictor.procesar_captura_imagen(_a_base64(recorte), contexto)
 
-            estudiantes.append({
-                "numero": 1,
-                "etiqueta": "Imagen completa",
-                "confianza_persona": None,
-                "caja": None,
-                "objetos_no_permitidos": [
-                    o["clase"] for o in objetos if o["clase"] in CLASES_NO_PERMITIDAS
-                ],
-                "analisis": analisis
-            })
+            if individual.get("estudiantes"):
+
+                analisis = individual["estudiantes"][0]
+
+                for campo in CAMPOS_ANALISIS:
+                    if campo in analisis:
+                        estudiante[campo] = analisis[campo]
+
+                # La narrativa del recorte se refiere al alumno como "Estudiante 1"
+                if isinstance(estudiante.get("narrativa"), str):
+                    estudiante["narrativa"] = estudiante["narrativa"].replace(
+                        "Estudiante 1", estudiante["nombre"]
+                    )
+
+            # Objeto (de VIDEO) con mayor confianza, para dibujarlo
+            principal = max(suyos, key=lambda o: o["confianza_procesada"] or o["confianza_video"])
+            estudiante["distractor"] = True
+            estudiante["objeto_caja"] = {
+                "clase": principal["clase"],
+                "confianza": principal["confianza_procesada"] or principal["confianza_video"],
+                **{k: principal[k] for k in ("x1", "y1", "x2", "y2")}
+            }
 
         resultado = {
             "archivo": datos["archivo"],
@@ -180,7 +242,8 @@ def predecir_alerta(datos):
             "generado": datetime.now().isoformat(timespec="seconds"),
             "motor": motor,
             "error_motor": error_motor,
-            "estudiantes": estudiantes
+            "captura": {k: v for k, v in captura.items() if k != "estudiantes"},
+            "estudiantes": captura.get("estudiantes", [])
         }
 
         os.makedirs(CARPETA_PREDICCIONES, exist_ok=True)
@@ -216,7 +279,10 @@ def listar_predicciones():
         with open(ruta, "r", encoding="utf-8") as f:
             datos = json.load(f)
 
-        if not os.path.exists(os.path.join(CARPETA_ALERTAS_VIDEO, datos["archivo"])):
+        alerta_existe = os.path.exists(os.path.join(CARPETA_ALERTAS_VIDEO, datos["archivo"]))
+
+        # Alertas borradas o predicciones con el formato anterior
+        if not alerta_existe or "captura" not in datos:
             os.remove(ruta)
             continue
 
@@ -232,6 +298,8 @@ def completar_pendientes():
     """
 
     from modulo_imagen import vigilante
+
+    listar_predicciones()  # descarta predicciones obsoletas
 
     for datos in vigilante.procesadas():
 

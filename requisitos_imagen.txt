@@ -5,3 +5,5 @@ scikit-image
 # Requeridas por los modelos nuevos de VIDEO (YOLOv5 de audifonos y seguimiento)
 seaborn
 lap
+# Requerida por los modelos entrenados de PREDICCION (.pkl)
+scikit-learn
