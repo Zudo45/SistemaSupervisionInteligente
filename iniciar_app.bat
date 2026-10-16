@@ -1,8 +1,10 @@
 @echo off
-REM Inicia la pagina del modulo IMAGEN.
+REM Inicia la pagina del Sistema de Supervision Inteligente (modo local).
 REM La primera vez crea el entorno virtual e instala las librerias.
 cd /d "%~dp0"
 call :preparar || exit /b 1
+REM Modo local: se descarta el link publico de un inicio anterior
+if exist "resultados\tunel.json" del "resultados\tunel.json"
 ".venv\Scripts\python.exe" -m streamlit run app.py
 exit /b
 

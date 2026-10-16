@@ -11,6 +11,8 @@ import base64
 import socket
 from datetime import datetime
 
+import psutil
+
 import cv2
 
 # Cada grupo esta en su carpeta: se agregan al path antes de importar
@@ -109,12 +111,26 @@ RUTA_TUNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultado
 
 
 def datos_tunel():
+    """
+    Link publico y clave del modo publico, solo si sigue activo. Si la
+    ventana de iniciar_publico.bat se cerro, el archivo queda con un
+    link muerto (error 1033 de Cloudflare): se descarta.
+    """
 
     try:
         with open(RUTA_TUNEL, "r", encoding="utf-8") as f:
-            return json.load(f)
+            tunel = json.load(f)
     except (OSError, ValueError):
         return None
+
+    if not psutil.pid_exists(tunel.get("pid", -1)):
+        try:
+            os.remove(RUTA_TUNEL)
+        except OSError:
+            pass
+        return None
+
+    return tunel
 
 
 def es_visita_remota():
