@@ -848,9 +848,6 @@ def mostrar_modulo_video():
                 sesion.detener()
                 st.rerun()
 
-        else:
-            st.caption("La cámara la maneja la laptop donde corre la página. Aquí solo se observa.")
-
     c1, c2, c3 = st.columns([1.55, 0.95, 1.55])
 
     with c1, st.container(border=True):
