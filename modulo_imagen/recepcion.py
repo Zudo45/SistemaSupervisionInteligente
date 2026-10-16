@@ -21,19 +21,96 @@ from modulo_imagen.config_imagen import (
 if CARPETA_PROYECTO not in sys.path:
     sys.path.insert(0, CARPETA_PROYECTO)
 
-# Funcion de deteccion original del grupo VIDEO (modelo best.pt)
-from modulos.deteccion import detectar_objetos as _detectar_video  # noqa: E402
+# Deteccion original del grupo VIDEO
+from modulos import deteccion as _video  # noqa: E402
 
 
-# La camara de VIDEO y el procesamiento de IMAGEN pueden usar el modelo
-# al mismo tiempo (hilos distintos): se usa de a uno.
+# La camara de VIDEO y el procesamiento de IMAGEN pueden usar los
+# modelos al mismo tiempo (hilos distintos): se usan de a uno.
 _candado_modelo = threading.Lock()
 
 
-def detectar_objetos(frame):
+def detectar_objetos_camara(frame):
+    """
+    Deteccion de VIDEO para fotogramas consecutivos de la camara: su
+    funcion tal cual (con seguimiento y cache entre fotogramas).
+    """
 
     with _candado_modelo:
-        return _detectar_video(frame)
+        return _video.detectar_objetos(frame)
+
+
+def _phone_laptop_en_foto(frame):
+    """
+    Modelo telefono/laptop de VIDEO sobre una foto suelta. Su version de
+    camara usa seguimiento (ByteTrack), que necesita varios fotogramas
+    para confirmar un objeto; en una foto se usa la prediccion directa
+    con los mismos parametros.
+    """
+
+    detecciones = []
+
+    resultados = _video.modelo_phone_laptop.predict(
+        source=frame,
+        conf=_video.UMBRAL_PHONE_LAPTOP,
+        iou=0.45,
+        imgsz=_video.IMGSZ,
+        verbose=False
+    )
+
+    for resultado in resultados:
+
+        if resultado.boxes is None:
+            continue
+
+        for caja in resultado.boxes:
+
+            nombre = _video.normalizar_clase(
+                _video.modelo_phone_laptop.names[int(caja.cls[0])]
+            )
+
+            if nombre not in {"telefono", "laptop"}:
+                continue
+
+            x1, y1, x2, y2 = map(int, caja.xyxy[0])
+
+            detecciones.append({
+                "clase": nombre,
+                "confianza": float(caja.conf[0]),
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                "modelo": "phone_laptop",
+                "track_id": None
+            })
+
+    return detecciones
+
+
+def detectar_objetos(frame):
+    """
+    Deteccion de VIDEO para fotos sueltas (IMAGEN y PREDICCION): los
+    mismos modelos y reglas de combinacion de VIDEO, pero sin la cache
+    entre fotogramas, que mezclaria detecciones de otras imagenes.
+    """
+
+    with _candado_modelo:
+
+        # Version anterior de VIDEO (un solo modelo)
+        if not hasattr(_video, "modelo_phone_laptop"):
+            return _video.detectar_objetos(frame)
+
+        personales = _video.detectar_modelo_personalizado(frame)
+
+        dispositivos = _video.resolver_conflictos(
+            _phone_laptop_en_foto(frame),
+            _video.detectar_telefono_general(frame)
+        )
+
+        detecciones = _video.resolver_conflictos_audifonos(
+            personales + dispositivos,
+            _video.detectar_audifonos_especializado(frame)
+        )
+
+        return _video.eliminar_duplicados(detecciones)
 
 
 EXTENSIONES_IMAGEN = (".jpg", ".jpeg", ".png", ".webp", ".bmp")

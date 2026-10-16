@@ -25,7 +25,7 @@ import cv2
 import numpy as np
 
 from modulo_imagen.config_imagen import CARPETA_PROYECTO  # agrega el proyecto al path
-from modulo_imagen.recepcion import detectar_objetos
+from modulo_imagen.recepcion import detectar_objetos, detectar_objetos_camara
 from modulo_imagen import vigilante
 from modulo_video.transmision import ServidorVideo
 
@@ -33,6 +33,15 @@ from configuracion.config import CAMARA, TIEMPO_ALERTA
 from modulos.deteccion import dibujar_detecciones
 from modulos.registro import guardar_alerta
 from principal import es_no_permitido, normalizar
+
+try:
+    # Version nueva de VIDEO: tolerancia a perdidas momentaneas del telefono
+    from principal import TOLERANCIA_TELEFONO, es_telefono
+except ImportError:
+    TOLERANCIA_TELEFONO = 0.0
+
+    def es_telefono(nombre):
+        return False
 
 
 def abrir_camara(indice):
@@ -174,6 +183,7 @@ class SesionCamara:
 
         inicio_deteccion = {}
         alerta_generada = {}
+        ultima_vez_visto = {}
         ultimo = time.time()
 
         try:
@@ -187,7 +197,7 @@ class SesionCamara:
                     self._anotar(self.error)
                     break
 
-                detecciones = detectar_objetos(frame)
+                detecciones = detectar_objetos_camara(frame)
                 ahora = time.time()
                 objetos_actuales = set()
 
@@ -200,6 +210,7 @@ class SesionCamara:
 
                     nombre = normalizar(clase)
                     objetos_actuales.add(nombre)
+                    ultima_vez_visto[nombre] = ahora
 
                     if nombre not in inicio_deteccion:
                         inicio_deteccion[nombre] = ahora
@@ -212,6 +223,13 @@ class SesionCamara:
                         ruta = guardar_alerta(frame, clase)
                         alerta_generada[nombre] = True
                         self._disparar_alerta(ruta, clase)
+
+                # El telefono se mantiene si se perdio solo un instante
+                # (TOLERANCIA_TELEFONO, igual que principal.py de VIDEO)
+                for nombre in list(inicio_deteccion):
+                    if (nombre not in objetos_actuales and es_telefono(nombre)
+                            and ahora - ultima_vez_visto.get(nombre, 0) <= TOLERANCIA_TELEFONO):
+                        objetos_actuales.add(nombre)
 
                 # Reiniciar el contador de los objetos que ya no se ven
                 for nombre in list(inicio_deteccion):
