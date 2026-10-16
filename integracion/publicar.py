@@ -1,12 +1,13 @@
 # ============================================================
-# PAGINA PUBLICA (TUNEL DE CLOUDFLARE)
-# Inicia la pagina y dos tuneles de Cloudflare (sin cuenta):
-#   - pagina: puerto 8501
-#   - video de la camara: puerto 8502
-# Los links publicos y una clave para las visitas se guardan en
-# resultados/tunel.json, que la pagina lee para mostrarlos.
-#
-# Uso (desde la raiz del proyecto): iniciar_publico.bat
+# INICIO DE LA PAGINA (con link publico)
+# Lo ejecuta iniciar_app.bat. Pasos:
+#   1. Descarga cloudflared (Cloudflare, sin cuenta) si falta.
+#   2. Crea dos tuneles: pagina (8501) y video de la camara (8502).
+#      Los links y una clave nueva se guardan en resultados/tunel.json,
+#      que la pagina lee para mostrarlos en la barra lateral.
+#   3. Inicia la pagina y abre el navegador en http://localhost:8501.
+# Sin internet, sigue en modo local (sin link publico).
+# Al cerrar la ventana se apaga todo.
 # ============================================================
 
 import os
@@ -17,15 +18,39 @@ import time
 import secrets
 import threading
 import subprocess
+import webbrowser
+import urllib.request
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLOUDFLARED = os.path.join(RAIZ, "herramientas", "cloudflared.exe")
+URL_CLOUDFLARED = (
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/"
+    "cloudflared-windows-amd64.exe"
+)
 RUTA_TUNEL = os.path.join(RAIZ, "resultados", "tunel.json")
 
 PUERTO_PAGINA = 8501
 PUERTO_VIDEO = 8502
+ESPERA_TUNEL_SEG = 45
 
 PATRON_LINK = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+
+
+def descargar_cloudflared():
+
+    if os.path.exists(CLOUDFLARED):
+        return True
+
+    print("Descargando cloudflared (programa oficial de Cloudflare)...")
+
+    try:
+        os.makedirs(os.path.dirname(CLOUDFLARED), exist_ok=True)
+        urllib.request.urlretrieve(URL_CLOUDFLARED, CLOUDFLARED + ".tmp")
+        os.replace(CLOUDFLARED + ".tmp", CLOUDFLARED)
+        return True
+    except Exception as error:  # noqa: BLE001
+        print(f"No se pudo descargar cloudflared: {error}")
+        return False
 
 
 def abrir_tunel(puerto, nombre, links):
@@ -53,16 +78,15 @@ def abrir_tunel(puerto, nombre, links):
     return proceso
 
 
-def main():
+def crear_link_publico():
+    """
+    Devuelve (procesos de los tuneles, datos del link) o ([], None).
+    """
 
-    if not os.path.exists(CLOUDFLARED):
-        print("No se encontro herramientas/cloudflared.exe")
-        sys.exit(1)
+    if not descargar_cloudflared():
+        return [], None
 
-    os.makedirs(os.path.dirname(RUTA_TUNEL), exist_ok=True)
-
-    if os.path.exists(RUTA_TUNEL):
-        os.remove(RUTA_TUNEL)
+    print("Creando el link publico...")
 
     links = {}
     procesos = [
@@ -70,31 +94,62 @@ def main():
         abrir_tunel(PUERTO_VIDEO, "video", links)
     ]
 
-    print("Creando los links publicos...")
-
     inicio = time.time()
 
-    while len(links) < 2 and time.time() - inicio < 60:
+    while len(links) < 2 and time.time() - inicio < ESPERA_TUNEL_SEG:
         time.sleep(0.5)
 
     if len(links) < 2:
-        print("No se pudieron crear los links publicos (revisa la conexion a internet).")
         for p in procesos:
             p.terminate()
-        sys.exit(1)
+        return [], None
 
-    clave = secrets.token_hex(3).upper()
+    return procesos, {**links, "clave": secrets.token_hex(3).upper(), "pid": os.getpid()}
 
-    with open(RUTA_TUNEL, "w", encoding="utf-8") as f:
-        json.dump({**links, "clave": clave, "pid": os.getpid()}, f, indent=2)
+
+def abrir_navegador_cuando_este_lista():
+
+    def esperar():
+        for _ in range(120):
+            try:
+                urllib.request.urlopen(f"http://localhost:{PUERTO_PAGINA}", timeout=1)
+                webbrowser.open(f"http://localhost:{PUERTO_PAGINA}")
+                return
+            except Exception:  # noqa: BLE001
+                time.sleep(1)
+
+    threading.Thread(target=esperar, daemon=True).start()
+
+
+def main():
+
+    os.makedirs(os.path.dirname(RUTA_TUNEL), exist_ok=True)
+
+    # Un link de un inicio anterior ya no existe
+    if os.path.exists(RUTA_TUNEL):
+        os.remove(RUTA_TUNEL)
+
+    procesos, tunel = crear_link_publico()
 
     print()
-    print("=" * 60)
-    print(f"  Link publico de la pagina: {links['pagina']}")
-    print(f"  Clave para las visitas:    {clave}")
-    print("=" * 60)
-    print("  Comparte el link y la clave. Cierra esta ventana para terminar.")
+    print("=" * 64)
+
+    if tunel:
+        with open(RUTA_TUNEL, "w", encoding="utf-8") as f:
+            json.dump(tunel, f, indent=2)
+
+        print(f"  Link publico (para los demas): {tunel['pagina']}")
+        print(f"  Clave para las visitas:        {tunel['clave']}")
+    else:
+        print("  Sin link publico (sin internet?). La pagina funciona en modo local.")
+
+    print(f"  En esta laptop:                http://localhost:{PUERTO_PAGINA}")
+    print("=" * 64)
+    print("  NO cierres esta ventana: al cerrarla se apaga la pagina y el link.")
+    print("  Puedes minimizarla.")
     print()
+
+    abrir_navegador_cuando_este_lista()
 
     try:
         subprocess.run(

@@ -1,11 +1,15 @@
 @echo off
-REM Inicia la pagina del Sistema de Supervision Inteligente (modo local).
-REM La primera vez crea el entorno virtual e instala las librerias.
+REM Sistema de Supervision Inteligente.
+REM La primera vez instala todo. Luego crea un link publico con una clave
+REM nueva, inicia la pagina y abre el navegador en http://localhost:8501.
+REM NO cerrar la ventana mientras se use la pagina.
 cd /d "%~dp0"
+title Sistema de Supervision Inteligente - NO CERRAR
 call :preparar || exit /b 1
-REM Modo local: se descarta el link publico de un inicio anterior
-if exist "resultados\tunel.json" del "resultados\tunel.json"
-".venv\Scripts\python.exe" -m streamlit run app.py
+".venv\Scripts\python.exe" integracion\publicar.py
+echo.
+echo La pagina se detuvo.
+pause
 exit /b
 
 :preparar

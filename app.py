@@ -543,11 +543,14 @@ with st.sidebar:
 
     tunel = datos_tunel()
 
-    if tunel and not es_visita_remota():
+    if not es_visita_remota():
         st.divider()
         st.markdown("**Acceso por internet**")
-        st.code(tunel["pagina"], language=None)
-        st.markdown(f"Clave para las visitas: **{tunel['clave']}**")
+        if tunel:
+            st.code(tunel["pagina"], language=None)
+            st.markdown(f"Clave para las visitas: **{tunel['clave']}**")
+        else:
+            st.caption("Sin link público. Para crearlo, inicia la página con iniciar_app.bat.")
 
     if not es_visita_remota():
         st.divider()

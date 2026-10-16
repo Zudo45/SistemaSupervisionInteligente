@@ -45,26 +45,28 @@ Forma de trabajo:
 ## Inicio rápido (Windows)
 
 1. Instalar **Python 3.12** marcando "Add Python to PATH".
-2. Descargar el repositorio (`git clone` o **Code → Download ZIP**).
-3. Doble clic en **`iniciar_app.bat`**: la primera vez crea el entorno e instala las librerías (necesita internet y tarda varios minutos); luego abre la página en `http://localhost:8501`.
-4. En la sección **Video**, pulsar **Iniciar cámara**. Cuando un objeto no permitido se mantiene 5 segundos, la captura pasa automáticamente a **Imágenes** y luego a **Predicciones**.
+2. Descargar el repositorio (`git clone` o **Code → Download ZIP**) y descomprimirlo.
+3. Doble clic en **`iniciar_app.bat`**. Hace todo:
+   - la primera vez instala las librerías (necesita internet y tarda varios minutos);
+   - crea un **link público** (`https://…trycloudflare.com`) y una **clave** nuevos;
+   - inicia la página y abre el navegador en `http://localhost:8501`.
+4. **No cerrar la ventana negra** mientras se use la página (se puede minimizar). Al cerrarla se apagan la página y el link.
+5. En la sección **Video**, pulsar **Iniciar cámara**. Cuando un objeto no permitido se mantiene 5 segundos, la captura pasa automáticamente a **Imágenes** y luego a **Predicciones**.
 
-Otras formas de uso:
+### Link público y clave
+
+- Aparecen en la ventana negra y en la barra lateral de la página (**Acceso por internet**). Cambian cada vez que se inicia.
+- Se comparten con quienes quieran ver la página desde otra red (datos móviles, otra wifi). Al entrar deben escribir la clave y **solo pueden mirar**: los botones de la cámara solo están en la laptop que inició la página (`http://localhost:8501`).
+- `cloudflared` es el programa oficial de Cloudflare (no requiere cuenta); se descarga solo la primera vez en `herramientas/`.
+
+### Otros lanzadores
 
 ```
-iniciar_video.bat                                   # sistema de VIDEO en su propia ventana
-.venv\Scripts\python -m streamlit run app.py        # página, desde la terminal
+iniciar_local.bat      # página sin link público (por ejemplo, sin internet)
+iniciar_video.bat      # sistema de VIDEO en su propia ventana
 ```
 
-Desde otra PC de la misma red, la página se abre con la dirección que aparece en su barra lateral (`http://<IP>:8501`). El video de la cámara usa además el puerto `8502`.
-
-### Acceso desde otras redes (link público)
-
-Doble clic en **`iniciar_publico.bat`** (después de haber usado `iniciar_app.bat` una vez). Descarga `cloudflared` (programa oficial de Cloudflare, sin cuenta) y crea un link público `https://…trycloudflare.com`, que funciona desde cualquier red (datos móviles, otra wifi).
-
-- El link y una **clave** aparecen en la ventana negra y en la barra lateral de la página.
-- Quien entra por el link debe ingresar la clave y **solo puede mirar**: los botones de la cámara solo están en la laptop anfitriona.
-- El link cambia cada vez que se inicia. Al cerrar la ventana negra, el link deja de funcionar.
+Desde otra PC de la misma red también se puede entrar con la dirección de la barra lateral (`http://<IP>:8501`).
 
 ## Datos y privacidad
 
